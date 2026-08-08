@@ -87,8 +87,23 @@ python3 scripts/create_admin.py
 ```bash
 curl -X POST http://localhost:8000/webhook/whatsapp \
   -H "Content-Type: application/json" \
-  -d '{"from": "919876543210", "text": "Need a rental agreement for my 2bhk in kochi, rent is 15000, tenant name Rahul Menon, landlord name Suresh Kumar, deposit 30000, 11 months, starting 1 August 2026"}'
+  -d '{
+    "entry": [{
+      "changes": [{
+        "value": {
+          "messages": [{
+            "from": "919876543210",
+            "type": "text",
+            "text": {"body": "Need a rental agreement for my 2bhk in kochi, rent is 15000, tenant name Rahul Menon, landlord name Suresh Kumar, deposit 30000, 11 months, starting 1 August 2026"}
+          }]
+        }
+      }]
+    }]
+  }'
 ```
+
+This mirrors the real shape Meta's Cloud API sends, so the same request
+body works once you switch to a live webhook.
 
 Then:
 1. Log in and open `/dashboard` — the request appears with fields Claude extracted.
@@ -101,9 +116,9 @@ Then:
 
 1. Create a Meta Developer account and a WhatsApp Business app.
 2. Get a test number (free) and a temporary access token.
-3. Set `WHATSAPP_TOKEN` and `WHATSAPP_PHONE_ID` in `.env`.
-4. Point Meta's webhook configuration at `https://your-deployed-url/webhook/whatsapp`.
-5. Adjust the payload parsing in `main.py`'s `whatsapp_webhook()` to match Meta's actual webhook JSON shape — the current parsing is simplified for now.
+3. Set `WHATSAPP_TOKEN`, `WHATSAPP_PHONE_ID`, and `WHATSAPP_VERIFY_TOKEN` (make up any string) in `.env`.
+4. Expose your local server with a tunnel (e.g. `ngrok http 8000`) for testing, or point at a deployed URL.
+5. In the Meta App Dashboard's webhook setup, enter that URL + `/webhook/whatsapp` as the callback URL and the same string as `WHATSAPP_VERIFY_TOKEN` as the verify token, then subscribe to the `messages` field.
 
 ## Before this goes near a real customer
 
@@ -111,7 +126,7 @@ Then:
 - [ ] Replace the sample template wording in `templates_docx/` with the real templates
 - [ ] Change `SESSION_SECRET` to a real random value (see `.env.example` for how to generate one)
 - [ ] Remove/replace the default admin account
-- [ ] Connect a real WhatsApp Business number and adjust webhook payload parsing
+- [ ] Connect a real (non-test) WhatsApp Business number
 - [ ] Move from SQLite to Postgres (Supabase/Neon — same SQLAlchemy code, just change the URL)
 - [ ] Add HTTPS + a real domain when deploying (Render/Railway provide this by default)
 - [ ] Review data retention — generated documents contain personal details; decide how long they're kept and who can access them

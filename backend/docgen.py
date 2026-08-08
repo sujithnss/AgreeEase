@@ -129,6 +129,21 @@ def convert_to_pdf(docx_path: str) -> str:
             raise RuntimeError(f"PDF conversion did not produce the expected file: {pdf_path}")
         return pdf_path
 
+    # The docx2pdf/Word fallback drives MS Word via AppleScript, which has
+    # proven unreliable in practice (crashes on some Word versions, or hangs
+    # indefinitely waiting on a dialog Word popped up). Off by default so a
+    # flaky local Word install can't hang approve requests; set
+    # ENABLE_WORD_PDF_FALLBACK=true once you've confirmed it's stable on
+    # your machine, or just install LibreOffice instead (recommended).
+    if os.environ.get("ENABLE_WORD_PDF_FALLBACK", "").lower() != "true":
+        raise RuntimeError(
+            "No reliable PDF converter available. Install LibreOffice "
+            "('brew install --cask libreoffice' locally, 'apt-get install "
+            "libreoffice' on the production host). The MS Word fallback is "
+            "disabled by default (unreliable) — set "
+            "ENABLE_WORD_PDF_FALLBACK=true in .env to re-enable it."
+        )
+
     try:
         from docx2pdf import convert
     except ImportError:

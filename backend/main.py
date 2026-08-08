@@ -2,6 +2,7 @@
 Main FastAPI app for AgreeEase.
 
 Endpoints:
+  GET  /webhook/whatsapp         -> Meta's webhook verification handshake
   POST /webhook/whatsapp        -> receives customer messages
   GET  /login, POST /login       -> staff login
   GET  /logout                   -> staff logout
@@ -20,7 +21,7 @@ import os
 import datetime
 
 from fastapi import FastAPI, Request, Form, Depends, HTTPException
-from fastapi.responses import HTMLResponse, RedirectResponse, FileResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, FileResponse, PlainTextResponse
 from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
 from sqlalchemy.orm import Session
@@ -39,6 +40,11 @@ templates = Jinja2Templates(directory="templates_html")
 
 SESSION_SECRET = os.environ.get("SESSION_SECRET", "dev-only-change-this-secret")
 app.add_middleware(SessionMiddleware, secret_key=SESSION_SECRET)
+
+# Arbitrary string you choose and enter into Meta's webhook setup form —
+# Meta echoes it back on the GET verification handshake below to prove
+# you control this endpoint.
+WHATSAPP_VERIFY_TOKEN = os.environ.get("WHATSAPP_VERIFY_TOKEN", "")
 
 init_db()
 _seed_db = SessionLocal()
@@ -81,14 +87,34 @@ def logout(request: Request):
 # ---------------------------------------------------------------------------
 # WhatsApp webhook — receives incoming customer messages
 # ---------------------------------------------------------------------------
+@app.get("/webhook/whatsapp")
+def whatsapp_webhook_verify(request: Request):
+    # Meta calls this once, at the time you save the webhook URL in the
+    # App Dashboard, to confirm you control the endpoint.
+    mode = request.query_params.get("hub.mode")
+    token = request.query_params.get("hub.verify_token")
+    challenge = request.query_params.get("hub.challenge", "")
+    if mode == "subscribe" and token == WHATSAPP_VERIFY_TOKEN:
+        return PlainTextResponse(challenge)
+    raise HTTPException(status_code=403, detail="Webhook verification failed")
+
+
 @app.post("/webhook/whatsapp")
 async def whatsapp_webhook(request: Request, db: Session = Depends(get_db)):
     payload = await request.json()
-    # NOTE: parse according to Meta's actual webhook payload shape.
-    # This is simplified for now — adapt to the real structure when
-    # you connect a live WhatsApp Business number.
-    customer_phone = payload.get("from")
-    message_text = payload.get("text", "")
+    # Meta's actual shape: entry[0].changes[0].value.messages[0]. The same
+    # webhook also delivers delivery/read status callbacks and other event
+    # types with no "messages" key — those are acknowledged and ignored.
+    try:
+        message = payload["entry"][0]["changes"][0]["value"]["messages"][0]
+    except (KeyError, IndexError):
+        return {"status": "ignored"}
+
+    if message.get("type") != "text":
+        return {"status": "ignored", "reason": "non-text message type"}
+
+    customer_phone = message["from"]
+    message_text = message.get("text", {}).get("body", "")
 
     # Check if this customer has an open request awaiting more info
     open_request = (
