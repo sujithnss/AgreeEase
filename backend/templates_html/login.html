@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>AgreeEase - Staff Login</title>
+    <style>
+        body { font-family: Arial, sans-serif; background: #f0f2f5; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; }
+        .box { background: white; padding: 30px 35px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); width: 300px; }
+        h1 { color: #1F4E79; font-size: 20px; margin-top: 0; }
+        label { display: block; margin-top: 12px; font-size: 13px; font-weight: bold; color: #555; }
+        input { width: 100%; padding: 8px; margin-top: 4px; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box; }
+        button { width: 100%; background: #1F4E79; color: white; border: none; padding: 10px; border-radius: 4px; margin-top: 18px; cursor: pointer; font-size: 14px; }
+        .error { color: #c0392b; font-size: 13px; margin-top: 10px; }
+    </style>
+</head>
+<body>
+    <div class="box">
+        <h1>AgreeEase — Staff Login</h1>
+        <form method="post" action="/login">
+            <label>Username</label>
+            <input name="username" required autofocus>
+            <label>Password</label>
+            <input name="password" type="password" required>
+            <button type="submit">Log In</button>
+        </form>
+        {% if error %}<p class="error">{{ error }}</p>{% endif %}
+    </div>
+</body>
+</html>

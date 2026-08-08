@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>AgreeEase - Review Request #{{ req.id }}</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 30px; background: #f7f7f7; }
+        .topbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+        h1 { color: #1F4E79; margin-bottom: 0; font-size: 22px; }
+        .topbar a { color: #1F4E79; text-decoration: none; font-size: 13px; margin-left: 15px; }
+        .box { background: white; padding: 20px; border-radius: 6px; margin-bottom: 20px; }
+        label { display: block; margin-top: 10px; font-weight: bold; font-size: 13px; color: #555; }
+        input, select { width: 100%; padding: 8px; margin-top: 4px; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box; }
+        .original { background: #fdf6e3; padding: 12px; border-radius: 4px; font-style: italic; }
+        button { background: #1F4E79; color: white; border: none; padding: 10px 18px; border-radius: 4px; cursor: pointer; margin-top: 15px; }
+        .missing { color: #c0392b; font-size: 13px; }
+        .meta { font-size: 13px; color: #555; }
+    </style>
+</head>
+<body>
+    <div class="topbar">
+        <h1>Review Request #{{ req.id }} &mdash; {{ template_info.label or req.agreement_type }}</h1>
+        <div>
+            Logged in as <strong>{{ user }}</strong>
+            <a href="/dashboard">All Requests</a>
+            <a href="/logout">Log out</a>
+        </div>
+    </div>
+
+    <div class="box">
+        <strong>Original customer message ({{ req.language }}):</strong>
+        <p class="original">{{ req.original_message }}</p>
+        <p class="meta">
+            <strong>Customer:</strong> {{ req.customer_name or 'Unknown' }} &nbsp;|&nbsp;
+            <strong>Phone:</strong> {{ req.customer_phone }} &nbsp;|&nbsp;
+            <strong>Status:</strong> {{ req.status }}
+            {% if req.agreement_end_date %}
+            &nbsp;|&nbsp; <strong>Agreement ends:</strong> {{ req.agreement_end_date.strftime('%d-%m-%Y') }}
+            {% endif %}
+        </p>
+        {% if req.draft_file_path %}<p class="meta">Draft file: {{ req.draft_file_path }}</p>{% endif %}
+        {% if req.final_file_path %}<p class="meta">Final file: {{ req.final_file_path }}</p>{% endif %}
+    </div>
+
+    <div class="box">
+        <h3>Extracted Fields (verify / correct before approving)</h3>
+        <form method="post" action="/dashboard/{{ req.id }}/approve">
+            {% for field in template_info.required_fields %}
+            <label>{{ field }}</label>
+            <input name="{{ field }}" value="{{ req.extracted_fields.get(field, '') }}">
+            {% endfor %}
+
+            {% if req.missing_fields %}
+            <p class="missing">Still missing: {{ req.missing_fields | join(', ') }}</p>
+            {% endif %}
+
+            <label>Staff Name</label>
+            <input name="staff_name" required>
+
+            <button type="submit">Approve & Send Watermarked Draft to Customer</button>
+        </form>
+    </div>
+
+    {% if req.status in ['draft_sent', 'confirmed', 'ready_to_print'] %}
+    <div class="box">
+        <h3>Customer Confirmed?</h3>
+        <p>Once the customer confirms the draft over WhatsApp, mark it here to generate the final print copy (in-house only).</p>
+        <form method="post" action="/dashboard/{{ req.id }}/confirm">
+            <button type="submit" {% if req.status == 'ready_to_print' %}disabled{% endif %}>
+                {% if req.status == 'ready_to_print' %}Final Copy Already Generated{% else %}Customer Confirmed &mdash; Generate Final Print Copy{% endif %}
+            </button>
+        </form>
+    </div>
+    {% endif %}
+
+    <div class="box">
+        <h3>Payment Status</h3>
+        <form method="post" action="/dashboard/{{ req.id }}/payment">
+            <label>Status</label>
+            <select name="payment_status">
+                <option value="unpaid" {% if req.payment_status == 'unpaid' %}selected{% endif %}>Unpaid</option>
+                <option value="partial" {% if req.payment_status == 'partial' %}selected{% endif %}>Partial</option>
+                <option value="paid" {% if req.payment_status == 'paid' %}selected{% endif %}>Paid</option>
+            </select>
+            <label>Amount Paid (Rs.)</label>
+            <input name="amount_paid" value="{{ req.amount_paid or '' }}">
+            <button type="submit">Update Payment Status</button>
+        </form>
+    </div>
+</body>
+</html>

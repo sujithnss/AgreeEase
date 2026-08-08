@@ -1,0 +1,10 @@
+fastapi
+uvicorn[standard]
+sqlalchemy
+jinja2
+python-multipart
+docxtpl
+python-docx
+anthropic
+requests
+itsdangerous

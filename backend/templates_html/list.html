@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>AgreeEase - Agreement Requests</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 30px; background: #f7f7f7; }
+        .topbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+        h1 { color: #1F4E79; margin-bottom: 0; }
+        .topbar a { color: #1F4E79; text-decoration: none; font-size: 13px; margin-left: 15px; }
+        table { width: 100%; border-collapse: collapse; background: white; }
+        th, td { padding: 10px; border-bottom: 1px solid #ddd; text-align: left; font-size: 14px; }
+        th { background: #1F4E79; color: white; }
+        .status, .pay { padding: 4px 8px; border-radius: 4px; font-size: 12px; color: white; display: inline-block; }
+        .awaiting_customer_info { background: #e67e22; }
+        .ready_for_staff_review { background: #2980b9; }
+        .approved, .draft_sent { background: #8e44ad; }
+        .confirmed, .ready_to_print { background: #27ae60; }
+        .unpaid { background: #c0392b; }
+        .paid { background: #27ae60; }
+        .partial { background: #d4ac0d; }
+        a.btn { background: #1F4E79; color: white; padding: 6px 12px; border-radius: 4px; text-decoration: none; font-size: 13px; }
+    </style>
+</head>
+<body>
+    <div class="topbar">
+        <h1>AgreeEase <span style="font-size:14px;color:#888;font-weight:normal;">— Agreement Requests</span></h1>
+        <div>
+            Logged in as <strong>{{ user }}</strong>
+            <a href="/dashboard/renewals">Upcoming Renewals</a>
+            <a href="/logout">Log out</a>
+        </div>
+    </div>
+    <table>
+        <tr>
+            <th>ID</th><th>Customer</th><th>Phone</th><th>Type</th><th>Status</th><th>Payment</th><th>Action</th>
+        </tr>
+        {% for r in requests %}
+        <tr>
+            <td>{{ r.id }}</td>
+            <td>{{ r.customer_name or '-' }}</td>
+            <td>{{ r.customer_phone }}</td>
+            <td>{{ r.agreement_type }}</td>
+            <td><span class="status {{ r.status }}">{{ r.status }}</span></td>
+            <td><span class="pay {{ r.payment_status }}">{{ r.payment_status }}</span></td>
+            <td><a class="btn" href="/dashboard/{{ r.id }}">Review</a></td>
+        </tr>
+        {% endfor %}
+    </table>
+</body>
+</html>

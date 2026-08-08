@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>AgreeEase - Upcoming Renewals</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 30px; background: #f7f7f7; }
+        .topbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+        h1 { color: #1F4E79; margin-bottom: 0; }
+        .topbar a { color: #1F4E79; text-decoration: none; font-size: 13px; margin-left: 15px; }
+        table { width: 100%; border-collapse: collapse; background: white; }
+        th, td { padding: 10px; border-bottom: 1px solid #ddd; text-align: left; font-size: 14px; }
+        th { background: #1F4E79; color: white; }
+        .overdue { color: #c0392b; font-weight: bold; }
+        .soon { color: #d4ac0d; font-weight: bold; }
+        button { background: #27ae60; color: white; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer; font-size: 13px; }
+        button:disabled { background: #aaa; cursor: default; }
+        .sent { color: #27ae60; font-size: 12px; }
+    </style>
+</head>
+<body>
+    <div class="topbar">
+        <h1>Upcoming Renewals (next 30 days)</h1>
+        <div>
+            Logged in as <strong>{{ user }}</strong>
+            <a href="/dashboard">All Requests</a>
+            <a href="/logout">Log out</a>
+        </div>
+    </div>
+    <table>
+        <tr>
+            <th>ID</th><th>Customer</th><th>Phone</th><th>Agreement Ends</th><th>Reminder</th><th>Action</th>
+        </tr>
+        {% for r in requests %}
+        <tr>
+            <td>{{ r.id }}</td>
+            <td>{{ r.customer_name or '-' }}</td>
+            <td>{{ r.customer_phone }}</td>
+            <td class="{{ 'overdue' if r.agreement_end_date < today else 'soon' }}">
+                {{ r.agreement_end_date.strftime('%d-%m-%Y') }}
+            </td>
+            <td>
+                {% if r.renewal_reminder_sent %}<span class="sent">Sent</span>{% else %}Not sent{% endif %}
+            </td>
+            <td>
+                <form method="post" action="/dashboard/{{ r.id }}/mark_renewal_sent">
+                    <button type="submit" {% if r.renewal_reminder_sent %}disabled{% endif %}>
+                        Send Renewal Reminder
+                    </button>
+                </form>
+            </td>
+        </tr>
+        {% endfor %}
+        {% if not requests %}
+        <tr><td colspan="6">No agreements approaching renewal in the next 30 days.</td></tr>
+        {% endif %}
+    </table>
+</body>
+</html>

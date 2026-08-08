@@ -1,0 +1,30 @@
+# Environment / secrets
+.env
+backend/.env
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+venv/
+env/
+.venv/
+*.egg-info/
+
+# Database
+backend/app.db
+*.db
+
+# Generated documents (contain customer PII — never commit these)
+backend/generated/*
+!backend/generated/.gitkeep
+
+# Logs
+*.log
+server.log
+
+# OS / editor
+.DS_Store
+.vscode/
+.idea/
+*.swp
