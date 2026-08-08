@@ -56,6 +56,10 @@ class AgreementRequest(Base):
     # document can be traced back to who it belongs to just by looking at
     # the generated/ folder, not only via the DB.
     draft_file_path = Column(String, nullable=True)
+    # PDF conversion of the draft — this is what's actually sent to the
+    # customer over WhatsApp as a watermarked preview, since a raw .docx
+    # isn't a great preview experience on a phone.
+    draft_pdf_path = Column(String, nullable=True)
     final_file_path = Column(String, nullable=True)
 
     # Renewal tracking — computed from start_date + duration once the

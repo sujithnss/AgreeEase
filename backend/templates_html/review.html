@@ -14,14 +14,27 @@
         button { background: #1F4E79; color: white; border: none; padding: 10px 18px; border-radius: 4px; cursor: pointer; margin-top: 15px; }
         .missing { color: #c0392b; font-size: 13px; }
         .meta { font-size: 13px; color: #555; }
+        .file-row { display: flex; align-items: center; gap: 8px; margin: 4px 0; }
+        button.del { background: #c0392b; color: white; border: none; padding: 2px 10px; border-radius: 4px; cursor: pointer; font-size: 12px; margin-top: 0; }
     </style>
 </head>
 <body>
+    {% macro file_row(label, filename, req_id) %}
+    <div class="file-row meta">
+        {{ label }}: <a href="/download/{{ filename }}">{{ filename }}</a>
+        <form method="post" action="/dashboard/documents/delete" onsubmit="return confirm('Delete {{ filename }}? This cannot be undone.');">
+            <input type="hidden" name="request_id" value="{{ req_id }}">
+            <input type="hidden" name="filename" value="{{ filename }}">
+            <button class="del" type="submit">Delete</button>
+        </form>
+    </div>
+    {% endmacro %}
     <div class="topbar">
         <h1>Review Request #{{ req.id }} &mdash; {{ template_info.label or req.agreement_type }}</h1>
         <div>
             Logged in as <strong>{{ user }}</strong>
             <a href="/dashboard">All Requests</a>
+            <a href="/dashboard/documents">Documents</a>
             <a href="/logout">Log out</a>
         </div>
     </div>
@@ -37,13 +50,14 @@
             &nbsp;|&nbsp; <strong>Agreement ends:</strong> {{ req.agreement_end_date.strftime('%d-%m-%Y') }}
             {% endif %}
         </p>
-        {% if req.draft_file_path %}<p class="meta">Draft file: {{ req.draft_file_path }}</p>{% endif %}
-        {% if req.final_file_path %}<p class="meta">Final file: {{ req.final_file_path }}</p>{% endif %}
+        {% if draft_pdf_filename %}{{ file_row('Draft PDF (sent to customer via WhatsApp)', draft_pdf_filename, req.id) }}{% endif %}
+        {% if draft_filename %}{{ file_row('Draft file (.docx)', draft_filename, req.id) }}{% endif %}
+        {% if final_filename %}{{ file_row('Final file', final_filename, req.id) }}{% endif %}
     </div>
 
     <div class="box">
         <h3>Extracted Fields (verify / correct before approving)</h3>
-        <form method="post" action="/dashboard/{{ req.id }}/approve">
+        <form method="post" action="/dashboard/{{ req.id }}/approve" onsubmit="document.getElementById('approve-btn').disabled=true; document.getElementById('approve-btn').textContent='Generating draft — please wait, this can take up to 30s…';">
             {% for field in template_info.required_fields %}
             <label>{{ field }}</label>
             <input name="{{ field }}" value="{{ req.extracted_fields.get(field, '') }}">
@@ -53,10 +67,18 @@
             <p class="missing">Still missing: {{ req.missing_fields | join(', ') }}</p>
             {% endif %}
 
+            {% if template_info.staff_fields %}
+            <h4>Additional details (not collected from the customer &mdash; fill in before approving)</h4>
+            {% for field in template_info.staff_fields %}
+            <label>{{ field }}</label>
+            <input name="{{ field }}" value="{{ req.extracted_fields.get(field, '') }}">
+            {% endfor %}
+            {% endif %}
+
             <label>Staff Name</label>
             <input name="staff_name" required>
 
-            <button type="submit">Approve & Send Watermarked Draft to Customer</button>
+            <button id="approve-btn" type="submit">Approve & Send Watermarked Draft to Customer</button>
         </form>
     </div>
 

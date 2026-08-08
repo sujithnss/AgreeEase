@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>AgreeEase - Generated Documents</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 30px; background: #f7f7f7; }
+        .topbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+        h1 { color: #1F4E79; margin-bottom: 0; }
+        .topbar a { color: #1F4E79; text-decoration: none; font-size: 13px; margin-left: 15px; }
+        table { width: 100%; border-collapse: collapse; background: white; }
+        th, td { padding: 10px; border-bottom: 1px solid #ddd; text-align: left; font-size: 14px; vertical-align: top; }
+        th { background: #1F4E79; color: white; }
+        .file-row { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+        .file-row:last-child { margin-bottom: 0; }
+        .missing { color: #999; font-style: italic; }
+        a.dl { color: #1F4E79; }
+        button.del { background: #c0392b; color: white; border: none; padding: 3px 10px; border-radius: 4px; cursor: pointer; font-size: 12px; }
+        .meta { font-size: 12px; color: #777; }
+    </style>
+</head>
+<body>
+    <div class="topbar">
+        <h1>Generated Documents <span style="font-size:14px;color:#888;font-weight:normal;">— audit trail</span></h1>
+        <div>
+            Logged in as <strong>{{ user }}</strong>
+            <a href="/dashboard">All Requests</a>
+            <a href="/dashboard/renewals">Upcoming Renewals</a>
+            <a href="/logout">Log out</a>
+        </div>
+    </div>
+    <table>
+        <tr>
+            <th>Generated</th><th>Request</th><th>Customer</th><th>Files</th>
+        </tr>
+        {% for row in rows %}
+        <tr>
+            <td>{{ row.timestamp.strftime('%d-%m-%Y %H:%M') }}</td>
+            <td>
+                {% if row.request_exists %}
+                <a href="/dashboard/{{ row.request_id }}">#{{ row.request_id }}</a>
+                {% else %}
+                #{{ row.request_id }} <span class="meta">(request deleted)</span>
+                {% endif %}
+                <div class="meta">{{ row.agreement_type or '' }}</div>
+            </td>
+            <td>{{ row.customer_name or '-' }}<div class="meta">{{ row.customer_phone or '' }}</div></td>
+            <td>
+                {% for f in row.files %}
+                <div class="file-row">
+                    {% if f.exists %}
+                    <a class="dl" href="/download/{{ f.filename }}">{{ f.label }}</a>
+                    <form method="post" action="/dashboard/documents/delete" onsubmit="return confirm('Delete {{ f.filename }}? This cannot be undone.');">
+                        <input type="hidden" name="request_id" value="{{ row.request_id }}">
+                        <input type="hidden" name="filename" value="{{ f.filename }}">
+                        <button class="del" type="submit">Delete</button>
+                    </form>
+                    {% else %}
+                    <span class="missing">{{ f.label }} — deleted</span>
+                    {% endif %}
+                </div>
+                {% endfor %}
+            </td>
+        </tr>
+        {% endfor %}
+        {% if not rows %}
+        <tr><td colspan="4">No documents generated yet.</td></tr>
+        {% endif %}
+    </table>
+</body>
+</html>

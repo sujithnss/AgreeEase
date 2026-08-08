@@ -9,9 +9,12 @@ actual Kerala stamp duty rules your cousin's business uses.
 
 import os
 import re
+import shutil
+import subprocess
 import datetime
 from docxtpl import DocxTemplate
 from templates_config import get_template
+from dateutils import calculate_agreement_end_date
 
 # Resolve paths relative to the project root (one level up from backend/),
 # so this works regardless of the directory the app is launched from.
@@ -81,6 +84,8 @@ def generate_document(
     context["today_date"] = datetime.date.today().strftime("%d-%m-%Y")
     context["stamp_duty_amount"] = calculate_stamp_duty(agreement_type, fields)
     context["watermark_text"] = "*** DRAFT - NOT VALID FOR STAMPING ***" if draft else ""
+    end_date = calculate_agreement_end_date(fields)
+    context["end_date"] = end_date.strftime("%d-%m-%Y") if end_date else ""
 
     doc.render(context)
 
@@ -91,3 +96,55 @@ def generate_document(
     out_path = os.path.join(OUTPUT_DIR, filename)
     doc.save(out_path)
     return out_path
+
+
+def convert_to_pdf(docx_path: str) -> str:
+    """
+    Converts a .docx to .pdf, so the customer-facing watermarked draft can be
+    sent as a WhatsApp-friendly PDF preview instead of a raw .docx.
+
+    Tries headless LibreOffice first — the production-viable path, works the
+    same on Mac (brew install --cask libreoffice) and Linux (apt-get install
+    libreoffice). Falls back to docx2pdf (drives MS Word) for local Mac/
+    Windows dev machines that have Word but not LibreOffice installed yet —
+    NOT viable on a Linux production host, install LibreOffice there instead.
+    """
+    pdf_path = os.path.splitext(docx_path)[0] + ".pdf"
+
+    soffice = shutil.which("soffice") or shutil.which("libreoffice")
+    if soffice:
+        outdir = os.path.dirname(docx_path)
+        try:
+            result = subprocess.run(
+                [soffice, "--headless", "--convert-to", "pdf", "--outdir", outdir, docx_path],
+                capture_output=True,
+                text=True,
+                timeout=60,
+            )
+        except subprocess.TimeoutExpired:
+            raise RuntimeError("PDF conversion timed out after 60s")
+        if result.returncode != 0:
+            raise RuntimeError(f"PDF conversion failed: {result.stderr or result.stdout}")
+        if not os.path.exists(pdf_path):
+            raise RuntimeError(f"PDF conversion did not produce the expected file: {pdf_path}")
+        return pdf_path
+
+    try:
+        from docx2pdf import convert
+    except ImportError:
+        raise RuntimeError(
+            "No PDF converter available. Install LibreOffice ('brew install "
+            "--cask libreoffice' locally, 'apt-get install libreoffice' on "
+            "the production host) for the path that works everywhere."
+        )
+    try:
+        convert(docx_path, pdf_path)
+    except BaseException as e:
+        # docx2pdf raises SystemExit (not a normal Exception) on failure,
+        # e.g. AppleScript/Word automation errors — must be caught broadly
+        # so callers relying on RuntimeError to gracefully fall back to the
+        # .docx don't get a crash instead.
+        raise RuntimeError(f"docx2pdf conversion via MS Word failed: {e}")
+    if not os.path.exists(pdf_path):
+        raise RuntimeError(f"PDF conversion did not produce the expected file: {pdf_path}")
+    return pdf_path

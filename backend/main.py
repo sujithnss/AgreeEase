@@ -28,7 +28,7 @@ from sqlalchemy import and_
 
 from db import init_db, get_db, SessionLocal, AgreementRequest, AuditLog, AdminUser
 from extraction import process_message, merge_followup_reply
-from docgen import generate_document
+from docgen import generate_document, convert_to_pdf
 from templates_config import TEMPLATES
 from whatsapp import send_whatsapp_message
 from dateutils import calculate_agreement_end_date
@@ -191,6 +191,109 @@ def renewals(request: Request, db: Session = Depends(get_db)):
     )
 
 
+@app.get("/dashboard/documents", response_class=HTMLResponse)
+def documents(request: Request, db: Session = Depends(get_db)):
+    """Audit trail of every generated document across all requests — draft
+    .docx/PDF and final .docx — with download and delete controls, so staff
+    can review or clean up generated files (e.g. demo/test runs) from the UI
+    instead of touching the filesystem directly. Registered before
+    /dashboard/{request_id} so "documents" isn't swallowed as a request id."""
+    redirect = require_login(request)
+    if redirect:
+        return redirect
+
+    logs = (
+        db.query(AuditLog)
+        .filter(AuditLog.action.in_(["draft_generated_sent", "final_copy_generated"]))
+        .order_by(AuditLog.timestamp.desc())
+        .all()
+    )
+    request_ids = {log.request_id for log in logs}
+    requests_by_id = {
+        r.id: r
+        for r in db.query(AgreementRequest).filter(AgreementRequest.id.in_(request_ids)).all()
+    }
+
+    rows = []
+    for log in logs:
+        req = requests_by_id.get(log.request_id)
+        file_specs = []
+        if log.action == "draft_generated_sent":
+            if log.details.get("path"):
+                file_specs.append(("Draft (.docx)", log.details["path"]))
+            if log.details.get("pdf_path"):
+                file_specs.append(("Draft PDF (sent to customer)", log.details["pdf_path"]))
+        elif log.action == "final_copy_generated":
+            if log.details.get("path"):
+                file_specs.append(("Final (.docx, in-house print)", log.details["path"]))
+
+        files = [
+            {
+                "label": label,
+                "filename": os.path.basename(path),
+                "exists": os.path.exists(path),
+            }
+            for label, path in file_specs
+        ]
+        if not files:
+            continue
+
+        rows.append(
+            {
+                "timestamp": log.timestamp,
+                "request_id": log.request_id,
+                "customer_name": req.customer_name if req else None,
+                "customer_phone": req.customer_phone if req else None,
+                "agreement_type": req.agreement_type if req else None,
+                "request_exists": req is not None,
+                "files": files,
+            }
+        )
+
+    return templates.TemplateResponse(
+        request, "documents.html", {"rows": rows, "user": get_current_user(request)}
+    )
+
+
+@app.post("/dashboard/documents/delete")
+def delete_document(
+    request: Request,
+    db: Session = Depends(get_db),
+    request_id: int = Form(...),
+    filename: str = Form(...),
+):
+    redirect = require_login(request)
+    if redirect:
+        return redirect
+
+    # Strip any directory components so this can't be used to delete files
+    # outside generated/, regardless of what's submitted.
+    safe_name = os.path.basename(filename)
+    file_path = os.path.join("generated", safe_name)
+
+    existed = os.path.exists(file_path)
+    if existed:
+        os.remove(file_path)
+
+    # Clear the matching column so the review page doesn't keep showing a
+    # dead link to a file that no longer exists.
+    req = db.query(AgreementRequest).filter(AgreementRequest.id == request_id).first()
+    if req:
+        for field in ("draft_file_path", "draft_pdf_path", "final_file_path"):
+            current = getattr(req, field)
+            if current and os.path.basename(current) == safe_name:
+                setattr(req, field, None)
+        db.commit()
+
+    log_action(
+        db, request_id, "document_deleted", get_current_user(request),
+        {"filename": safe_name, "existed": existed},
+    )
+
+    referer = request.headers.get("referer", "/dashboard/documents")
+    return RedirectResponse(url=referer, status_code=303)
+
+
 @app.get("/dashboard/{request_id}", response_class=HTMLResponse)
 def review_request(request_id: int, request: Request, db: Session = Depends(get_db)):
     redirect = require_login(request)
@@ -203,16 +306,22 @@ def review_request(request_id: int, request: Request, db: Session = Depends(get_
     return templates.TemplateResponse(
         request,
         "review.html",
-        {"req": req, "template_info": template_info, "user": get_current_user(request)},
+        {
+            "req": req,
+            "template_info": template_info,
+            "user": get_current_user(request),
+            "draft_filename": os.path.basename(req.draft_file_path) if req.draft_file_path else None,
+            "draft_pdf_filename": os.path.basename(req.draft_pdf_path) if req.draft_pdf_path else None,
+            "final_filename": os.path.basename(req.final_file_path) if req.final_file_path else None,
+        },
     )
 
 
 @app.post("/dashboard/{request_id}/approve")
-def approve_request(
+async def approve_request(
     request_id: int,
     request: Request,
     db: Session = Depends(get_db),
-    staff_name: str = Form(...),
 ):
     redirect = require_login(request)
     if redirect:
@@ -221,6 +330,19 @@ def approve_request(
     req = db.query(AgreementRequest).filter(AgreementRequest.id == request_id).first()
     if not req:
         raise HTTPException(status_code=404, detail="Request not found")
+
+    form = await request.form()
+    staff_name = form.get("staff_name", "").strip()
+    if not staff_name:
+        raise HTTPException(status_code=400, detail="Staff name is required")
+
+    template_info = TEMPLATES.get(req.agreement_type, {})
+    editable_fields = template_info.get("required_fields", []) + template_info.get("staff_fields", [])
+    updated_fields = dict(req.extracted_fields or {})
+    for field in editable_fields:
+        if field in form:
+            updated_fields[field] = form.get(field, "")
+    req.extracted_fields = updated_fields
 
     req.status = "approved"
     req.reviewed_by = staff_name
@@ -233,14 +355,25 @@ def approve_request(
         customer_phone=req.customer_phone, customer_name=req.customer_name,
     )
     req.draft_file_path = draft_path
+
+    # Convert to PDF for the customer-facing WhatsApp preview — a raw .docx
+    # isn't a great preview experience on a phone. Falls back to sending the
+    # .docx if LibreOffice isn't installed, so approving isn't blocked on it.
+    try:
+        pdf_path = convert_to_pdf(draft_path)
+        req.draft_pdf_path = pdf_path
+    except RuntimeError as e:
+        pdf_path = None
+        log_action(db, request_id, "pdf_conversion_failed", staff_name, {"error": str(e)})
+
     req.status = "draft_sent"
     db.commit()
-    log_action(db, request_id, "draft_generated_sent", staff_name, {"path": draft_path})
+    log_action(db, request_id, "draft_generated_sent", staff_name, {"path": draft_path, "pdf_path": pdf_path})
 
     send_whatsapp_message(
         req.customer_phone,
         "Here is your draft agreement for review. Please confirm if all details are correct.",
-        attachment_path=draft_path,
+        attachment_path=pdf_path or draft_path,
     )
 
     return RedirectResponse(url=f"/dashboard/{request_id}", status_code=303)

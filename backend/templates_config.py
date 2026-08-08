@@ -11,7 +11,7 @@ to update when a template changes.
 
 TEMPLATES = {
     "rental_agreement": {
-        "label": "Residential Rental Agreement",
+        "label": "Residential Rental / Licence Agreement",
         "file": "templates_docx/rental_agreement.docx",
         "required_fields": [
             "landlord_name",
@@ -21,6 +21,28 @@ TEMPLATES = {
             "security_deposit",
             "agreement_duration_months",
             "start_date",
+        ],
+        # Not gathered from the customer's WhatsApp message — staff fill
+        # these in on the review dashboard before approving, since a
+        # casual WhatsApp text won't include land-record-level detail
+        # like age, parentage, or survey schedule.
+        "staff_fields": [
+            "landlord_age",
+            "landlord_parentage",
+            "landlord_address",
+            "tenant_age",
+            "tenant_parentage",
+            "tenant_address",
+            "district",
+            "sub_district",
+            "taluk",
+            "village",
+            "desom",
+            "local_authority",
+            "house_no",
+            "fee_due_day",
+            "interest_rate_percent",
+            "property_description",
         ],
     },
     "shop_agreement": {

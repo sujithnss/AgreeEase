@@ -5,6 +5,10 @@ jinja2
 python-multipart
 docxtpl
 python-docx
-anthropic
 requests
 itsdangerous
+# docx-to-PDF fallback for local Mac/Windows dev via MS Word, used only if
+# LibreOffice isn't installed (see docgen.py:convert_to_pdf). Not needed —
+# and not functional — on the Linux production host; install LibreOffice
+# there instead.
+docx2pdf
