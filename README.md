@@ -1,5 +1,7 @@
 # AgreeEase
 
+**Live deployment:** https://agreeease.onrender.com/login
+
 AI-assisted agreement drafting for stamp paper vendors. A customer's
 WhatsApp message (English/Malayalam) is read by AI, structured into an
 agreement draft, reviewed by staff, sent to the customer as a
