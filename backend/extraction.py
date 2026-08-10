@@ -123,28 +123,75 @@ def process_message(message: str) -> dict:
     }
 
 
+_COMPLETION_MESSAGE_EN = "Thank you! Your details are with our team for review. We'll send you a draft shortly."
+_COMPLETION_MESSAGE_ML = "നന്ദി! നിങ്ങളുടെ വിവരങ്ങൾ ഞങ്ങളുടെ ടീം പരിശോധിക്കുന്നുണ്ട്. ഉടൻ തന്നെ ഡ്രാഫ്റ്റ് അയച്ചുതരുന്നതാണ്."
+
+
+def completion_message(language: str) -> str:
+    """Fixed (non-AI-generated) confirmation text sent once all required
+    fields are in, in the customer's own language. Kept as static text
+    rather than another LLM call — it's the same message every time, so
+    there's no reason to pay the latency/cost of generating it."""
+    if language == "malayalam":
+        return _COMPLETION_MESSAGE_ML
+    if language == "mixed":
+        return f"{_COMPLETION_MESSAGE_EN}\n{_COMPLETION_MESSAGE_ML}"
+    return _COMPLETION_MESSAGE_EN
+
+
+_DRAFT_READY_MESSAGE_EN = "Here is your draft agreement for review. Please confirm if all details are correct."
+_DRAFT_READY_MESSAGE_ML = "ഇതാ നിങ്ങളുടെ കരാർ ഡ്രാഫ്റ്റ്. എല്ലാ വിവരങ്ങളും ശരിയാണെന്ന് ഉറപ്പുവരുത്തി ദയവായി സ്ഥിരീകരിക്കുക."
+
+
+def draft_ready_message(doc_language: str) -> str:
+    """Sent alongside the draft attachment — matched to the DOCUMENT's
+    language (staff's choice on approval), not the customer's original
+    message language, since it should read naturally next to what they're
+    actually looking at."""
+    return _DRAFT_READY_MESSAGE_ML if doc_language == "malayalam" else _DRAFT_READY_MESSAGE_EN
+
+
+def renewal_reminder_message(language: str, customer_name: str) -> str:
+    name = customer_name or ""
+    if language == "malayalam":
+        return (
+            f"നമസ്കാരം {name}, നിങ്ങളുടെ കരാറിന്റെ കാലാവധി അടുത്തുവരുന്നു. "
+            f"പുതുക്കുന്നതിനായി ഞങ്ങളെ ബന്ധപ്പെടുക."
+        )
+    return f"Hi {name}, your agreement is approaching its renewal date. Please contact us to renew."
+
+
 def merge_followup_reply(previous_fields: dict, agreement_type: str, reply_message: str, language: str) -> dict:
-    """Called when a customer replies with the missing info. Merges the new
-    reply into what we already extracted, then re-checks what's still missing."""
+    """Called when a customer replies with the missing info. Extracts values
+    from ONLY the new reply, then merges into what we already have in
+    Python — the model never sees (or gets a chance to rewrite) the
+    already-known fields, so it can't hallucinate a replacement value for
+    something the customer didn't actually mention in this message."""
     prompt = (
         f"Agreement type: {agreement_type}\n"
         f"Required field names for this agreement type: {', '.join(required_fields_for(agreement_type))}\n"
-        f"Already known fields (JSON): {json.dumps(previous_fields)}\n"
-        f"Customer's new reply: \"{reply_message}\"\n\n"
-        f"Extract any NEW field values from the reply and merge them with "
-        f"the already known fields. Use EXACTLY the required field names "
-        f"listed above — do not invent your own field names or synonyms. "
-        f"Any date field MUST be normalized to DD-MM-YYYY format, regardless "
-        f"of how the customer wrote it. Respond with ONLY the merged flat "
-        f"JSON object of all fields, nothing else."
+        f"Customer's message: \"{reply_message}\"\n\n"
+        f"Extract ONLY the field values mentioned in THIS message. Use "
+        f"EXACTLY the required field names listed above — do not invent "
+        f"your own field names or synonyms. Use null for any field not "
+        f"mentioned in this message — do not guess, infer, or reuse a "
+        f"value from anywhere else. Any date field MUST be normalized to "
+        f"DD-MM-YYYY format, regardless of how the customer wrote it. "
+        f"Respond with ONLY valid JSON, nothing else."
     )
     raw = _chat(
-        "You extract and merge structured agreement data. Respond with ONLY valid JSON.",
+        "You extract structured agreement data from a single message. Respond with ONLY valid JSON.",
         prompt,
-        max_tokens=800,
+        max_tokens=500,
     )
     raw = raw.replace("```json", "").replace("```", "").strip()
-    merged_fields = json.loads(raw)
+    new_fields = json.loads(raw)
+
+    merged_fields = dict(previous_fields)
+    for field in required_fields_for(agreement_type):
+        value = new_fields.get(field)
+        if value not in (None, "", "null"):
+            merged_fields[field] = value
 
     missing = find_missing_fields(agreement_type, merged_fields)
     next_question = generate_followup_question(missing, language)

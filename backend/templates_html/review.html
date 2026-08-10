@@ -46,6 +46,9 @@
             <strong>Customer:</strong> {{ req.customer_name or 'Unknown' }} &nbsp;|&nbsp;
             <strong>Phone:</strong> {{ req.customer_phone }} &nbsp;|&nbsp;
             <strong>Status:</strong> {{ req.status }}
+            {% if req.draft_file_path %}
+            &nbsp;|&nbsp; <strong>Document language:</strong> {{ (req.doc_language or 'malayalam') | capitalize }}
+            {% endif %}
             {% if req.agreement_end_date %}
             &nbsp;|&nbsp; <strong>Agreement ends:</strong> {{ req.agreement_end_date.strftime('%d-%m-%Y') }}
             {% endif %}
@@ -73,6 +76,15 @@
             <label>{{ field }}</label>
             <input name="{{ field }}" value="{{ req.extracted_fields.get(field, '') }}">
             {% endfor %}
+            {% endif %}
+
+            {% if template_info.files and template_info.files|length > 1 %}
+            <label>Document Language</label>
+            <select name="doc_language">
+                {% for lang in template_info.files.keys() %}
+                <option value="{{ lang }}" {% if (req.doc_language or 'malayalam') == lang %}selected{% endif %}>{{ lang | capitalize }}</option>
+                {% endfor %}
+            </select>
             {% endif %}
 
             <label>Staff Name</label>

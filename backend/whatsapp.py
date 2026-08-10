@@ -41,23 +41,33 @@ def send_whatsapp_message(to_phone: str, message: str, attachment_path: str = No
 
     headers = {"Authorization": f"Bearer {WHATSAPP_TOKEN}"}
 
-    text_payload = {
-        "messaging_product": "whatsapp",
-        "to": to_phone,
-        "type": "text",
-        "text": {"body": message},
-    }
-    text_response = requests.post(f"{GRAPH_API_BASE}/messages", headers=headers, json=text_payload)
+    # Meta API calls (bad/expired token, rate limits, network issues) must
+    # never blow up the caller — sending is best-effort so a WhatsApp outage
+    # can't break dashboard actions or webhook processing (which Meta retries
+    # aggressively on a 5xx response).
+    try:
+        text_payload = {
+            "messaging_product": "whatsapp",
+            "to": to_phone,
+            "type": "text",
+            "text": {"body": message},
+        }
+        text_response = requests.post(f"{GRAPH_API_BASE}/messages", headers=headers, json=text_payload)
+        text_response.raise_for_status()
 
-    if not attachment_path:
-        return text_response.json()
+        if not attachment_path:
+            return {"status": "sent", "text": text_response.json()}
 
-    media_id = _upload_media(attachment_path)
-    doc_payload = {
-        "messaging_product": "whatsapp",
-        "to": to_phone,
-        "type": "document",
-        "document": {"id": media_id, "filename": os.path.basename(attachment_path)},
-    }
-    doc_response = requests.post(f"{GRAPH_API_BASE}/messages", headers=headers, json=doc_payload)
-    return {"text": text_response.json(), "document": doc_response.json()}
+        media_id = _upload_media(attachment_path)
+        doc_payload = {
+            "messaging_product": "whatsapp",
+            "to": to_phone,
+            "type": "document",
+            "document": {"id": media_id, "filename": os.path.basename(attachment_path)},
+        }
+        doc_response = requests.post(f"{GRAPH_API_BASE}/messages", headers=headers, json=doc_payload)
+        doc_response.raise_for_status()
+        return {"status": "sent", "text": text_response.json(), "document": doc_response.json()}
+    except requests.exceptions.RequestException as e:
+        print(f"[WhatsApp ERROR] Failed to send to {to_phone}: {e}")
+        return {"status": "error", "error": str(e)}

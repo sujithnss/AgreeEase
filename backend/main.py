@@ -28,9 +28,15 @@ from sqlalchemy.orm import Session
 from sqlalchemy import and_
 
 from db import init_db, get_db, SessionLocal, AgreementRequest, AuditLog, AdminUser
-from extraction import process_message, merge_followup_reply
+from extraction import (
+    process_message,
+    merge_followup_reply,
+    completion_message,
+    draft_ready_message,
+    renewal_reminder_message,
+)
 from docgen import generate_document, convert_to_pdf
-from templates_config import TEMPLATES
+from templates_config import TEMPLATES, available_languages_for
 from whatsapp import send_whatsapp_message
 from dateutils import calculate_agreement_end_date
 from auth import hash_password, verify_password, require_login, get_current_user, ensure_default_admin
@@ -144,10 +150,7 @@ async def whatsapp_webhook(request: Request, db: Session = Depends(get_db)):
         if result["missing_fields"]:
             send_whatsapp_message(customer_phone, result["next_question"])
         else:
-            send_whatsapp_message(
-                customer_phone,
-                "Thank you! Your details are with our team for review. We'll send you a draft shortly.",
-            )
+            send_whatsapp_message(customer_phone, completion_message(open_request.language))
         return {"status": "ok", "request_id": open_request.id}
 
     # Fresh request
@@ -170,10 +173,7 @@ async def whatsapp_webhook(request: Request, db: Session = Depends(get_db)):
     if result["missing_fields"]:
         send_whatsapp_message(customer_phone, result["next_question"])
     else:
-        send_whatsapp_message(
-            customer_phone,
-            "Thank you! Your request is with our team for review. We'll send you a draft shortly.",
-        )
+        send_whatsapp_message(customer_phone, completion_message(result["language"]))
 
     return {"status": "ok", "request_id": new_request.id}
 
@@ -370,15 +370,21 @@ async def approve_request(
             updated_fields[field] = form.get(field, "")
     req.extracted_fields = updated_fields
 
+    doc_language = form.get("doc_language", "malayalam")
+    if doc_language not in available_languages_for(req.agreement_type):
+        doc_language = "malayalam"
+    req.doc_language = doc_language
+
     req.status = "approved"
     req.reviewed_by = staff_name
     db.commit()
-    log_action(db, request_id, "approved", staff_name)
+    log_action(db, request_id, "approved", staff_name, {"doc_language": doc_language})
 
     # Generate watermarked draft and send to customer
     draft_path = generate_document(
         req.id, req.agreement_type, req.extracted_fields, draft=True,
         customer_phone=req.customer_phone, customer_name=req.customer_name,
+        language=doc_language,
     )
     req.draft_file_path = draft_path
 
@@ -396,11 +402,13 @@ async def approve_request(
     db.commit()
     log_action(db, request_id, "draft_generated_sent", staff_name, {"path": draft_path, "pdf_path": pdf_path})
 
-    send_whatsapp_message(
+    send_result = send_whatsapp_message(
         req.customer_phone,
-        "Here is your draft agreement for review. Please confirm if all details are correct.",
+        draft_ready_message(doc_language),
         attachment_path=pdf_path or draft_path,
     )
+    if send_result.get("status") == "error":
+        log_action(db, request_id, "draft_whatsapp_send_failed", staff_name, {"error": send_result.get("error")})
 
     return RedirectResponse(url=f"/dashboard/{request_id}", status_code=303)
 
@@ -424,6 +432,7 @@ def confirm_and_print(request_id: int, request: Request, db: Session = Depends(g
     final_path = generate_document(
         req.id, req.agreement_type, req.extracted_fields, draft=False,
         customer_phone=req.customer_phone, customer_name=req.customer_name,
+        language=req.doc_language or "malayalam",
     )
     req.final_file_path = final_path
     req.status = "ready_to_print"
@@ -473,8 +482,7 @@ def mark_renewal_sent(request_id: int, request: Request, db: Session = Depends(g
     db.commit()
     send_whatsapp_message(
         req.customer_phone,
-        f"Hi {req.customer_name or ''}, your agreement is approaching its renewal date. "
-        f"Please contact us to renew.",
+        renewal_reminder_message(req.language, req.customer_name),
     )
     log_action(db, request_id, "renewal_reminder_sent", get_current_user(request))
     return RedirectResponse(url="/dashboard/renewals", status_code=303)

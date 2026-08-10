@@ -13,7 +13,7 @@ import shutil
 import subprocess
 import datetime
 from docxtpl import DocxTemplate
-from templates_config import get_template
+from templates_config import get_template, get_template_file
 from dateutils import calculate_agreement_end_date
 
 # Resolve paths relative to the project root (one level up from backend/),
@@ -61,11 +61,16 @@ def generate_document(
     draft: bool = True,
     customer_phone: str = "",
     customer_name: str = "",
+    language: str = "malayalam",
 ) -> str:
     """
     Generates the filled document.
     draft=True  -> watermarked "DRAFT - NOT VALID" copy for customer review
     draft=False -> clean copy for in-house printing only (staff use)
+    language    -> which template file to use ("malayalam" or "english");
+                   most agreements are drafted in Malayalam in practice, so
+                   that's the default. Falls back to whatever's available
+                   for agreement types without a Malayalam template yet.
 
     The output filename is tagged with the customer's phone number and
     name (e.g. request_12_919876543210_rahul-menon_final.docx) so a
@@ -76,7 +81,7 @@ def generate_document(
     if not template_info:
         raise ValueError(f"Unknown agreement type: {agreement_type}")
 
-    template_path = os.path.join(PROJECT_ROOT, template_info["file"])
+    template_path = os.path.join(PROJECT_ROOT, get_template_file(agreement_type, language))
     doc = DocxTemplate(template_path)
 
     context = dict(fields)
@@ -90,9 +95,10 @@ def generate_document(
     doc.render(context)
 
     suffix = "draft" if draft else "final"
+    lang_tag = "ml" if language == "malayalam" else "en"
     phone_tag = _slugify(customer_phone, max_len=15)
     name_tag = _slugify(customer_name or fields.get("tenant_name", ""))
-    filename = f"request_{request_id}_{phone_tag}_{name_tag}_{suffix}.docx"
+    filename = f"request_{request_id}_{phone_tag}_{name_tag}_{suffix}_{lang_tag}.docx"
     out_path = os.path.join(OUTPUT_DIR, filename)
     doc.save(out_path)
     return out_path

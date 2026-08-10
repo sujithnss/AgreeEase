@@ -16,11 +16,18 @@ in `README.md`.
   Uses `claude-haiku-4-5-20251001` for cost efficiency. Swappable — see
   "Swapping the AI provider" below.
 - `backend/templates_config.py` — the single source of truth for agreement
-  types and their required fields. The extraction engine, the missing-field
-  checker, and `docgen.py` all read from this same dict.
+  types, their required fields, and the `.docx` file per document language
+  (each agreement type has a `"files"` dict, e.g.
+  `{"malayalam": ..., "english": ...}` — see `get_template_file()`). The
+  extraction engine, the missing-field checker, and `docgen.py` all read
+  from this same dict.
 - `backend/docgen.py` — fills `.docx` templates via docxtpl, computes
-  (placeholder) stamp duty, toggles the watermark. Same template file is
-  reused for both the customer-facing draft and the final in-house copy.
+  (placeholder) stamp duty, toggles the watermark. `generate_document()`
+  takes a `language` param (default `"malayalam"`, since that's how most
+  agreements are actually drafted) and resolves the right file via
+  `get_template_file()`. Same template file is reused for both the
+  customer-facing draft and the final in-house copy — only `watermark_text`
+  differs.
 - `backend/db.py` — SQLAlchemy models. SQLite by default; swap
   `SQLALCHEMY_DATABASE_URL` for Postgres later, nothing else changes.
 - `backend/auth.py` — session-based staff login (PBKDF2 password hashing,
@@ -31,7 +38,14 @@ in `README.md`.
   "stub" mode when `WHATSAPP_TOKEN` isn't set — this is intentional and
   lets the whole pipeline be tested without a live WhatsApp number.
 - `templates_docx/` — the actual `.docx` agreement templates with
-  `{{jinja-style}}` placeholders (docxtpl syntax).
+  `{{jinja-style}}` placeholders (docxtpl syntax). `rental_agreement_ml.docx`
+  (Malayalam, the default) and `rental_agreement_en.docx` (English) share
+  the exact same field names, so either can be filled from the same
+  `extracted_fields` dict — staff pick which one to generate per request on
+  the review dashboard (`doc_language` on `AgreementRequest`, defaults to
+  Malayalam). `rental_agreement_ml.docx` was adapted from a real vendor
+  specimen (license agreement wording for an 11-month Kerala house
+  license), not just a translated placeholder.
 
 ## Conventions to follow when extending this
 
@@ -66,8 +80,11 @@ in the app needs to change.
 
 - `docgen.py: calculate_stamp_duty()` — placeholder formula (1% of annual
   value). Replace with actual Kerala stamp duty rules.
-- `templates_docx/*.docx` — illustrative wording. Replace with the
-  vendor's real template text.
+- `templates_docx/rental_agreement_ml.docx` — adapted from the vendor's
+  real specimen wording, but should still get a legal review before
+  production use (clause numbering/wording was cleaned up from an OCR'd
+  source, not copied verbatim). `shop_agreement.docx` is still illustrative
+  English-only wording and has no Malayalam variant yet.
 - `main.py: whatsapp_webhook()` — payload parsing is simplified for the
   now. Adjust to Meta's actual webhook JSON shape once a live number is
   connected.

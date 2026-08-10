@@ -36,7 +36,12 @@ class AgreementRequest(Base):
     customer_name = Column(String, nullable=True, index=True)
 
     original_message = Column(Text)
-    language = Column(String, default="english")
+    language = Column(String, default="english")  # language the customer wrote in
+    # Which template language the generated document uses — staff chooses
+    # this on approval; defaults to Malayalam since that's how most
+    # agreements are actually drafted, independent of what language the
+    # customer's WhatsApp message happened to be in.
+    doc_language = Column(String, default="malayalam")
     agreement_type = Column(String, nullable=True)
     extracted_fields = Column(JSON, default=dict)
     missing_fields = Column(JSON, default=list)
@@ -95,6 +100,25 @@ class AdminUser(Base):
 
 def init_db():
     Base.metadata.create_all(bind=engine)
+    _add_missing_columns()
+
+
+def _add_missing_columns():
+    """create_all() only creates tables that don't exist yet — it won't add
+    new columns to a table that's already there. This project has no
+    migration framework (kept deliberately light, see CLAUDE.md), so for
+    the rare column added after the fact, just patch it in directly.
+    SQLite-only (PRAGMA); a Postgres swap should use a real migration tool
+    instead, so this is skipped on any other dialect."""
+    if engine.dialect.name != "sqlite":
+        return
+    with engine.connect() as conn:
+        existing = {row[1] for row in conn.exec_driver_sql("PRAGMA table_info(agreement_requests)")}
+        if "doc_language" not in existing:
+            conn.exec_driver_sql(
+                "ALTER TABLE agreement_requests ADD COLUMN doc_language VARCHAR DEFAULT 'malayalam'"
+            )
+            conn.commit()
 
 
 def get_db():
