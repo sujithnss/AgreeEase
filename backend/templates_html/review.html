@@ -17,6 +17,7 @@
         .file-row { display: flex; align-items: center; gap: 8px; margin: 4px 0; }
         button.del { background: #c0392b; color: white; border: none; padding: 2px 10px; border-radius: 4px; cursor: pointer; font-size: 12px; margin-top: 0; }
         button.del-request { padding: 6px 12px; font-size: 13px; margin-left: 15px; }
+        .lang-note { background: #fff3cd; border: 1px solid #f0d98c; color: #7a5b00; padding: 10px 14px; border-radius: 4px; font-size: 13px; margin-top: 10px; }
     </style>
 </head>
 <body>
@@ -64,6 +65,15 @@
 
     <div class="box">
         <h3>Extracted Fields (verify / correct before approving)</h3>
+        {% if req.doc_language == 'malayalam' %}
+        <p class="lang-note">
+            Document language is <strong>Malayalam</strong>, but the customer's message (and the fields
+            extracted from it) may be in English — names/addresses are NOT auto-translated. Please check
+            <strong>landlord_name</strong>, <strong>tenant_name</strong>, and <strong>property_address</strong>
+            below and retype them in Malayalam script if needed before approving (the original message above
+            is there for reference).
+        </p>
+        {% endif %}
         <form method="post" action="/dashboard/{{ req.id }}/approve" onsubmit="document.getElementById('approve-btn').disabled=true; document.getElementById('approve-btn').textContent='Generating draft — please wait, this can take up to 30s…';">
             {% for field in template_info.required_fields %}
             <label>{{ field }}</label>
