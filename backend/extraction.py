@@ -8,7 +8,7 @@ efficiency and speed.
 import json
 import os
 import requests
-from templates_config import TEMPLATES, required_fields_for
+from templates_config import TEMPLATES, required_fields_for, PREFERRED_LANGUAGE_FIELD
 
 GROQ_API_KEY = os.environ.get("GROQ_API_KEY")
 MODEL = os.environ.get("GROQ_MODEL") or "llama-3.3-70b-versatile"
@@ -38,8 +38,8 @@ def _chat(system: str, user: str, max_tokens: int) -> str:
 
 def _schema_block() -> str:
     lines = []
-    for key, info in TEMPLATES.items():
-        fields = ", ".join(info["required_fields"])
+    for key in TEMPLATES:
+        fields = ", ".join(required_fields_for(key))
         lines.append(f'- "{key}": {fields}')
     return "\n".join(lines)
 
@@ -61,6 +61,14 @@ Your job:
    invent values. Any date field (e.g. "start_date") MUST be normalized to
    DD-MM-YYYY format, regardless of how the customer wrote it (e.g. "1 August
    2026" or "1/8/26" both become "01-08-2026").
+   If the field list includes "preferred_document_language", this is NOT
+   about what language the customer is writing to you in — it's whether
+   they explicitly stated which language they want the FINAL AGREEMENT
+   DOCUMENT drafted in (e.g. "please make it in Malayalam", "venam
+   Englishil", "മലയാളത്തിൽ വേണം", "I need it in English"). Only fill this
+   in if they explicitly said so; normalize to exactly "malayalam" or
+   "english". Leave it null if they didn't say — do not infer it from
+   what language their message itself is written in.
 3. Detect the language the customer wrote in: "english", "malayalam", or "mixed".
 
 Respond with ONLY valid JSON in this exact shape, nothing else:
@@ -77,7 +85,12 @@ missing fields for their agreement, write ONE short message asking for all
 of them, in the SAME language the customer originally used (English or
 Malayalam — use Malayalam script if they wrote in Malayalam). Keep it
 friendly and brief, like a real staff member would text. Do not add
-greetings or sign-offs, just the question(s)."""
+greetings or sign-offs, just the question(s).
+
+If "preferred_document_language" is one of the missing fields, phrase
+that part as asking whether they'd like the final agreement DOCUMENT
+drafted in English or Malayalam — make clear this is about the document
+itself, not the language they're chatting in."""
 
 
 def extract_from_message(message: str) -> dict:
@@ -139,6 +152,17 @@ def process_message(message: str) -> dict:
         "next_question": next_question,
         "status": "ready_for_staff_review" if not missing else "awaiting_customer_info",
     }
+
+
+def resolve_doc_language(message_language: str, extracted_fields: dict) -> str:
+    """The document language to generate: the customer's explicitly stated
+    preference (preferred_document_language) if we have it, otherwise a
+    best-guess fallback from the language they happened to type in. Staff
+    can still override this on the review dashboard regardless."""
+    stated = extracted_fields.get(PREFERRED_LANGUAGE_FIELD)
+    if stated in ("malayalam", "english"):
+        return stated
+    return "english" if message_language == "english" else "malayalam"
 
 
 _CLARIFICATION_MESSAGE_EN = (
@@ -219,7 +243,11 @@ def merge_followup_reply(previous_fields: dict, agreement_type: str, reply_messa
         f"your own field names or synonyms. Use null for any field not "
         f"mentioned in this message — do not guess, infer, or reuse a "
         f"value from anywhere else. Any date field MUST be normalized to "
-        f"DD-MM-YYYY format, regardless of how the customer wrote it. "
+        f"DD-MM-YYYY format, regardless of how the customer wrote it. If "
+        f"\"{PREFERRED_LANGUAGE_FIELD}\" is a required field, it means "
+        f"which language they want the agreement DOCUMENT drafted in "
+        f"(not what language this message is written in) — normalize to "
+        f"exactly \"malayalam\" or \"english\". "
         f"Respond with ONLY valid JSON, nothing else."
     )
     raw = _chat(

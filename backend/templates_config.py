@@ -9,6 +9,15 @@ generator all read from this same dict, so there is only one place
 to update when a template changes.
 """
 
+# Universal field asked for on any agreement type where more than one
+# document language is available. Not part of the document body itself
+# (docxtpl ignores unused context keys) — it only drives which template
+# file gets generated, and is shown to staff for transparency into what
+# the customer actually said. Applied automatically in required_fields_for()
+# rather than listed by hand in each TEMPLATES entry, since it's a
+# workflow concern (which file to use), not document content.
+PREFERRED_LANGUAGE_FIELD = "preferred_document_language"
+
 TEMPLATES = {
     "rental_agreement": {
         "label": "Residential Rental / Licence Agreement",
@@ -78,9 +87,14 @@ def get_template(agreement_type: str):
     return TEMPLATES.get(agreement_type)
 
 
-def required_fields_for(agreement_type: str):
+def required_fields_for(agreement_type: str) -> list:
     t = TEMPLATES.get(agreement_type)
-    return t["required_fields"] if t else []
+    if not t:
+        return []
+    fields = list(t["required_fields"])
+    if len(t["files"]) > 1:
+        fields.append(PREFERRED_LANGUAGE_FIELD)
+    return fields
 
 
 def get_template_file(agreement_type: str, language: str = "malayalam") -> str:

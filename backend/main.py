@@ -34,9 +34,10 @@ from extraction import (
     completion_message,
     draft_ready_message,
     renewal_reminder_message,
+    resolve_doc_language,
 )
 from docgen import generate_document, convert_to_pdf
-from templates_config import TEMPLATES, available_languages_for
+from templates_config import TEMPLATES, available_languages_for, required_fields_for
 from whatsapp import send_whatsapp_message
 from dateutils import calculate_agreement_end_date
 from auth import hash_password, verify_password, require_login, get_current_user, ensure_default_admin
@@ -61,6 +62,19 @@ _seed_db.close()
 def log_action(db: Session, request_id: int, action: str, actor: str, details: dict = None):
     db.add(AuditLog(request_id=request_id, action=action, actor=actor, details=details or {}))
     db.commit()
+
+
+def _effective_template_info(agreement_type: str) -> dict:
+    """TEMPLATES[agreement_type] with "required_fields" replaced by
+    required_fields_for()'s result — which includes the universal
+    preferred_document_language field for multi-language types. Templates
+    and approve_request read required_fields from this instead of the raw
+    TEMPLATES dict so that field actually shows up on the review form and
+    is accepted as an editable field on approve."""
+    info = dict(TEMPLATES.get(agreement_type, {}))
+    if info:
+        info["required_fields"] = required_fields_for(agreement_type)
+    return info
 
 
 # ---------------------------------------------------------------------------
@@ -150,6 +164,7 @@ async def whatsapp_webhook(request: Request, db: Session = Depends(get_db)):
             open_request.missing_fields = result["missing_fields"]
             open_request.status = result["status"]
             open_request.customer_name = open_request.customer_name or result["extracted_fields"].get("tenant_name")
+            open_request.doc_language = resolve_doc_language(open_request.language, open_request.extracted_fields)
             db.commit()
             log_action(db, open_request.id, "customer_reply_reclassified", "system", result)
         else:
@@ -163,6 +178,7 @@ async def whatsapp_webhook(request: Request, db: Session = Depends(get_db)):
             open_request.missing_fields = result["missing_fields"]
             open_request.status = result["status"]
             open_request.customer_name = open_request.customer_name or result["extracted_fields"].get("tenant_name")
+            open_request.doc_language = resolve_doc_language(open_request.language, open_request.extracted_fields)
             db.commit()
             log_action(db, open_request.id, "customer_reply_merged", "system", result)
 
@@ -179,11 +195,11 @@ async def whatsapp_webhook(request: Request, db: Session = Depends(get_db)):
         customer_name=result["extracted_fields"].get("tenant_name"),
         original_message=message_text,
         language=result["language"],
-        # Default the generated document's language to match what the
-        # customer actually wrote in (mixed leans Malayalam, since that's
-        # how most agreements are drafted in practice either way) — staff
-        # can still override this on the review dashboard before approving.
-        doc_language="english" if result["language"] == "english" else "malayalam",
+        # Prefer the customer's explicitly stated document-language
+        # preference (preferred_document_language, asked for as a normal
+        # required field); falls back to a guess from message language
+        # until they answer. Staff can still override on the dashboard.
+        doc_language=resolve_doc_language(result["language"], result["extracted_fields"]),
         agreement_type=result["agreement_type"],
         extracted_fields=result["extracted_fields"],
         missing_fields=result["missing_fields"],
@@ -358,7 +374,7 @@ def review_request(request_id: int, request: Request, db: Session = Depends(get_
     req = db.query(AgreementRequest).filter(AgreementRequest.id == request_id).first()
     if not req:
         raise HTTPException(status_code=404, detail="Request not found")
-    template_info = TEMPLATES.get(req.agreement_type, {})
+    template_info = _effective_template_info(req.agreement_type)
     return templates.TemplateResponse(
         request,
         "review.html",
@@ -392,7 +408,7 @@ async def approve_request(
     if not staff_name:
         raise HTTPException(status_code=400, detail="Staff name is required")
 
-    template_info = TEMPLATES.get(req.agreement_type, {})
+    template_info = _effective_template_info(req.agreement_type)
     editable_fields = template_info.get("required_fields", []) + template_info.get("staff_fields", [])
     updated_fields = dict(req.extracted_fields or {})
     for field in editable_fields:
