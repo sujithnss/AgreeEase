@@ -160,6 +160,11 @@ async def whatsapp_webhook(request: Request, db: Session = Depends(get_db)):
         customer_name=result["extracted_fields"].get("tenant_name"),
         original_message=message_text,
         language=result["language"],
+        # Default the generated document's language to match what the
+        # customer actually wrote in (mixed leans Malayalam, since that's
+        # how most agreements are drafted in practice either way) — staff
+        # can still override this on the review dashboard before approving.
+        doc_language="english" if result["language"] == "english" else "malayalam",
         agreement_type=result["agreement_type"],
         extracted_fields=result["extracted_fields"],
         missing_fields=result["missing_fields"],
