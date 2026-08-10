@@ -19,6 +19,8 @@
         .paid { background: #27ae60; }
         .partial { background: #d4ac0d; }
         a.btn { background: #1F4E79; color: white; padding: 6px 12px; border-radius: 4px; text-decoration: none; font-size: 13px; }
+        .actions { display: flex; gap: 6px; align-items: center; }
+        button.del { background: #c0392b; color: white; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer; font-size: 13px; }
     </style>
 </head>
 <body>
@@ -43,7 +45,14 @@
             <td>{{ r.agreement_type }}</td>
             <td><span class="status {{ r.status }}">{{ r.status }}</span></td>
             <td><span class="pay {{ r.payment_status }}">{{ r.payment_status }}</span></td>
-            <td><a class="btn" href="/dashboard/{{ r.id }}">Review</a></td>
+            <td>
+                <div class="actions">
+                    <a class="btn" href="/dashboard/{{ r.id }}">Review</a>
+                    <form method="post" action="/dashboard/{{ r.id }}/delete" onsubmit="return confirm('Delete request #{{ r.id }} ({{ r.customer_name or r.customer_phone }})? This removes it from the dashboard (recoverable from the DB, not shown in the UI).');">
+                        <button class="del" type="submit" title="Delete this request">Delete</button>
+                    </form>
+                </div>
+            </td>
         </tr>
         {% endfor %}
     </table>

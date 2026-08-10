@@ -110,6 +110,24 @@ def process_message(message: str) -> dict:
     extracted_fields = result.get("extracted_fields", {})
     language = result.get("language", "english")
 
+    if agreement_type not in TEMPLATES:
+        # required_fields_for() would silently return [] for an
+        # unrecognized type, which used to make find_missing_fields()
+        # report "nothing missing" and the request would go straight to
+        # ready_for_staff_review with no fields at all. Instead, ask the
+        # customer to clarify/resend — this also sets status back to
+        # awaiting_customer_info so their next reply gets re-classified
+        # from scratch (see the webhook handler in main.py) rather than
+        # merged against a template that was never actually determined.
+        return {
+            "agreement_type": "unknown",
+            "language": language,
+            "extracted_fields": extracted_fields,
+            "missing_fields": [],
+            "next_question": clarification_message(language),
+            "status": "awaiting_customer_info",
+        }
+
     missing = find_missing_fields(agreement_type, extracted_fields)
     next_question = generate_followup_question(missing, language)
 
@@ -121,6 +139,31 @@ def process_message(message: str) -> dict:
         "next_question": next_question,
         "status": "ready_for_staff_review" if not missing else "awaiting_customer_info",
     }
+
+
+_CLARIFICATION_MESSAGE_EN = (
+    "Sorry, we couldn't tell what type of agreement you need. Could you "
+    "resend your request with a bit more detail — e.g. \"house rental "
+    "agreement\" or \"shop rental agreement\" — along with the basic "
+    "details (names, address, rent, dates)?"
+)
+_CLARIFICATION_MESSAGE_ML = (
+    "ക്ഷമിക്കണം, നിങ്ങൾക്ക് ഏത് തരം കരാറാണ് വേണ്ടതെന്ന് ഞങ്ങൾക്ക് "
+    "മനസ്സിലായില്ല. ദയവായി കുറച്ചുകൂടി വിശദമായി വീണ്ടും അയയ്ക്കാമോ "
+    "— ഉദാ: \"വീട് വാടക കരാർ\" അല്ലെങ്കിൽ \"കട വാടക കരാർ\" — "
+    "പേരുകൾ, വിലാസം, വാടക, തീയതികൾ എന്നിവയും ചേർത്ത്."
+)
+
+
+def clarification_message(language: str) -> str:
+    """Sent when the AI couldn't classify which agreement type the
+    customer wants at all (as opposed to knowing the type but missing a
+    few fields, which generate_followup_question() already handles)."""
+    if language == "malayalam":
+        return _CLARIFICATION_MESSAGE_ML
+    if language == "mixed":
+        return f"{_CLARIFICATION_MESSAGE_EN}\n{_CLARIFICATION_MESSAGE_ML}"
+    return _CLARIFICATION_MESSAGE_EN
 
 
 _COMPLETION_MESSAGE_EN = "Thank you! Your details are with our team for review. We'll send you a draft shortly."

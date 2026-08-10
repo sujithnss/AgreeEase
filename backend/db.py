@@ -50,6 +50,12 @@ class AgreementRequest(Base):
     # approved -> draft_sent -> confirmed -> ready_to_print
     status = Column(String, default="awaiting_customer_info")
 
+    # Soft delete — staff can remove a wrongly-classified/junk request from
+    # the dashboard, but the row (and its audit trail) stays in the DB
+    # rather than being hard-deleted, since this is a legal-document
+    # business and the audit trail matters even for mistakes.
+    is_deleted = Column(Boolean, default=False)
+
     stamp_duty_amount = Column(String, nullable=True)
     reviewed_by = Column(String, nullable=True)
 
@@ -117,6 +123,11 @@ def _add_missing_columns():
         if "doc_language" not in existing:
             conn.exec_driver_sql(
                 "ALTER TABLE agreement_requests ADD COLUMN doc_language VARCHAR DEFAULT 'malayalam'"
+            )
+            conn.commit()
+        if "is_deleted" not in existing:
+            conn.exec_driver_sql(
+                "ALTER TABLE agreement_requests ADD COLUMN is_deleted BOOLEAN DEFAULT 0"
             )
             conn.commit()
 

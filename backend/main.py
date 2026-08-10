@@ -128,26 +128,45 @@ async def whatsapp_webhook(request: Request, db: Session = Depends(get_db)):
         .filter(
             AgreementRequest.customer_phone == customer_phone,
             AgreementRequest.status == "awaiting_customer_info",
+            AgreementRequest.is_deleted.isnot(True),
         )
         .order_by(AgreementRequest.id.desc())
         .first()
     )
 
     if open_request:
-        result = merge_followup_reply(
-            open_request.extracted_fields,
-            open_request.agreement_type,
-            message_text,
-            open_request.language,
-        )
-        open_request.extracted_fields = result["extracted_fields"]
-        open_request.missing_fields = result["missing_fields"]
-        open_request.status = result["status"]
-        open_request.customer_name = open_request.customer_name or result["extracted_fields"].get("tenant_name")
-        db.commit()
-        log_action(db, open_request.id, "customer_reply_merged", "system", result)
+        if open_request.agreement_type not in TEMPLATES:
+            # We never managed to classify this request in the first
+            # place (see process_message() in extraction.py) — merging
+            # against an unknown template's empty field list would be a
+            # no-op, so re-run full classification on the combined text
+            # instead of just extracting from the new reply.
+            combined_message = f"{open_request.original_message}\n{message_text}"
+            result = process_message(combined_message)
+            open_request.original_message = combined_message
+            open_request.language = result["language"]
+            open_request.agreement_type = result["agreement_type"]
+            open_request.extracted_fields = result["extracted_fields"]
+            open_request.missing_fields = result["missing_fields"]
+            open_request.status = result["status"]
+            open_request.customer_name = open_request.customer_name or result["extracted_fields"].get("tenant_name")
+            db.commit()
+            log_action(db, open_request.id, "customer_reply_reclassified", "system", result)
+        else:
+            result = merge_followup_reply(
+                open_request.extracted_fields,
+                open_request.agreement_type,
+                message_text,
+                open_request.language,
+            )
+            open_request.extracted_fields = result["extracted_fields"]
+            open_request.missing_fields = result["missing_fields"]
+            open_request.status = result["status"]
+            open_request.customer_name = open_request.customer_name or result["extracted_fields"].get("tenant_name")
+            db.commit()
+            log_action(db, open_request.id, "customer_reply_merged", "system", result)
 
-        if result["missing_fields"]:
+        if result["next_question"]:
             send_whatsapp_message(customer_phone, result["next_question"])
         else:
             send_whatsapp_message(customer_phone, completion_message(open_request.language))
@@ -175,7 +194,7 @@ async def whatsapp_webhook(request: Request, db: Session = Depends(get_db)):
     db.refresh(new_request)
     log_action(db, new_request.id, "message_received_extracted", "system", result)
 
-    if result["missing_fields"]:
+    if result["next_question"]:
         send_whatsapp_message(customer_phone, result["next_question"])
     else:
         send_whatsapp_message(customer_phone, completion_message(result["language"]))
@@ -191,7 +210,12 @@ def dashboard(request: Request, db: Session = Depends(get_db)):
     redirect = require_login(request)
     if redirect:
         return redirect
-    all_requests = db.query(AgreementRequest).order_by(AgreementRequest.id.desc()).all()
+    all_requests = (
+        db.query(AgreementRequest)
+        .filter(AgreementRequest.is_deleted.isnot(True))
+        .order_by(AgreementRequest.id.desc())
+        .all()
+    )
     return templates.TemplateResponse(
         request, "list.html", {"requests": all_requests, "user": get_current_user(request)}
     )
@@ -212,6 +236,7 @@ def renewals(request: Request, db: Session = Depends(get_db)):
         .filter(
             AgreementRequest.agreement_end_date.isnot(None),
             AgreementRequest.agreement_end_date <= cutoff,
+            AgreementRequest.is_deleted.isnot(True),
         )
         .order_by(AgreementRequest.agreement_end_date.asc())
         .all()
@@ -473,6 +498,25 @@ def update_payment(
     log_action(db, request_id, "payment_updated", get_current_user(request), {"payment_status": payment_status, "amount_paid": amount_paid})
 
     return RedirectResponse(url=f"/dashboard/{request_id}", status_code=303)
+
+
+@app.post("/dashboard/{request_id}/delete")
+def delete_request(request_id: int, request: Request, db: Session = Depends(get_db)):
+    """Soft-deletes a request (e.g. wrong agreement type identified, junk/
+    test entry) so it drops off the dashboard list. This does NOT remove
+    the DB row or its audit trail — this is a legal-document business, so
+    even a staff mistake should stay reconstructable from the audit log
+    rather than being permanently erased."""
+    redirect = require_login(request)
+    if redirect:
+        return redirect
+    req = db.query(AgreementRequest).filter(AgreementRequest.id == request_id).first()
+    if not req:
+        raise HTTPException(status_code=404, detail="Request not found")
+    req.is_deleted = True
+    db.commit()
+    log_action(db, request_id, "request_deleted", get_current_user(request))
+    return RedirectResponse(url="/dashboard", status_code=303)
 
 
 @app.post("/dashboard/{request_id}/mark_renewal_sent")
