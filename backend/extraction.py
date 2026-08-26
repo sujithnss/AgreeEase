@@ -11,7 +11,7 @@ import requests
 from templates_config import TEMPLATES, required_fields_for, PREFERRED_LANGUAGE_FIELD
 
 GROQ_API_KEY = os.environ.get("GROQ_API_KEY")
-MODEL = os.environ.get("GROQ_MODEL") or "llama-3.3-70b-versatile"
+MODEL = os.environ.get("GROQ_MODEL") or "openai/gpt-oss-120b"
 GROQ_CHAT_URL = "https://api.groq.com/openai/v1/chat/completions"
 
 
