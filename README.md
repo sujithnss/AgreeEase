@@ -30,7 +30,7 @@ actual watermarked draft. See "Watermarked PDF drafts" under Features.
 | `backend/extraction.py` | Groq (Llama)-based classification, field extraction, follow-up questions |
 | `backend/templates_config.py` | Registry of agreement types & required fields (single source of truth) |
 | `backend/docgen.py` | Fills `.docx` templates, computes stamp duty, injects the diagonal watermark, converts drafts to PDF, tags filenames with customer identity |
-| `backend/db.py` | SQLite models — requests, audit log, admin users |
+| `backend/db.py` | SQLAlchemy models — requests, audit log, admin users. SQLite by default; reads `DATABASE_URL` for a hosted Postgres instead (needed on Render — see "Database persistence" below) |
 | `backend/auth.py` | Staff login (session cookies, PBKDF2 password hashing) |
 | `backend/dateutils.py` | Agreement end-date calculation (dependency-free) |
 | `backend/whatsapp.py` | WhatsApp Cloud API sender — uploads the PDF/docx and sends it as a document message (console "stub" mode until real credentials are added) |
@@ -83,6 +83,8 @@ cp .env.example .env
 #   - GROQ_API_KEY        (required, from console.groq.com)
 #   - SESSION_SECRET      (change from the default before real use)
 #   - WHATSAPP_TOKEN / WHATSAPP_PHONE_ID  (optional — stub mode without these)
+#   - DATABASE_URL        (optional locally — leave blank for SQLite; required
+#                          in production, see "Database persistence" below)
 
 export $(cat .env | xargs)      # or use python-dotenv / direnv
 uvicorn main:app --reload
@@ -162,9 +164,11 @@ the converted PDF), then installs `backend/requirements.txt` as usual.
 
 To deploy:
 1. Connect the repo in Render as a Blueprint (uses `render.yaml` as-is).
-2. Fill in the `sync: false` env vars in the Render dashboard (`GROQ_API_KEY`,
-   `WHATSAPP_TOKEN`, `WHATSAPP_PHONE_ID`, `WHATSAPP_VERIFY_TOKEN`,
-   `DEFAULT_ADMIN_PASSWORD`) — these aren't stored in git.
+2. Fill in the `sync: false` env vars in the Render dashboard (`DATABASE_URL`,
+   `GROQ_API_KEY`, `WHATSAPP_TOKEN`, `WHATSAPP_PHONE_ID`,
+   `WHATSAPP_VERIFY_TOKEN`, `DEFAULT_ADMIN_PASSWORD`) — these aren't stored
+   in git. See "Database persistence" below for `DATABASE_URL` specifically
+   — without it, all data is lost on the next deploy.
 3. Note that switching an *existing* service from the native Python
    runtime to Docker isn't an in-place change on Render's side — you'll
    likely need to recreate the service (or create a new one) from the
@@ -175,6 +179,32 @@ Expect noticeably longer build times than the old native-runtime setup
 plan's 512MB can be tight for headless LibreOffice conversions under
 load.
 
+## Database persistence
+
+Render's web service filesystem is **ephemeral** — every deploy builds a
+fresh container, and any file written at runtime (including the SQLite
+file at `backend/app.db`) is gone the moment the old container is
+replaced. This is true regardless of the native Python runtime vs.
+Docker; SQLite on a Render web service simply doesn't survive a
+redeploy or restart.
+
+Fix: set `DATABASE_URL` to a hosted Postgres instance — [Neon](https://neon.tech)
+or [Supabase](https://supabase.com) both have a free tier. `db.py` reads
+it automatically and falls back to the local SQLite file only when it's
+unset, so this is a config change, not a code change:
+
+1. Create a project on Neon/Supabase, then find the connection string
+   (Neon: click **Connect** on the project dashboard — it's in the modal
+   that opens, along with a pooled/direct toggle; leave pooling on).
+2. Paste it as `DATABASE_URL` in Render's dashboard (Environment tab) and
+   redeploy. `postgres://`-style URLs are rewritten to `postgresql://`
+   automatically (psycopg2 requires the latter).
+3. The first boot against a fresh Postgres database creates every table
+   from scratch via `create_all()` — there's nothing to migrate forward
+   from SQLite, since that data was already being wiped on every deploy.
+4. Re-run `scripts/create_admin.py` (or let the auto-created default
+   admin print to the logs again) — the new database starts empty.
+
 ## Before this goes near a real customer
 
 - [ ] Replace the stamp duty placeholder formula in `docgen.py` with your cousin's actual Kerala rates
@@ -182,7 +212,7 @@ load.
 - [ ] Change `SESSION_SECRET` to a real random value (see `.env.example` for how to generate one)
 - [ ] Remove/replace the default admin account
 - [ ] Connect a real (non-test) WhatsApp Business number
-- [ ] Move from SQLite to Postgres (Supabase/Neon — same SQLAlchemy code, just change the URL)
+- [ ] Set up regular backups for the Postgres database (Neon/Supabase both offer point-in-time recovery on paid tiers — check what the free tier actually covers)
 - [ ] Add HTTPS + a real domain when deploying (Render/Railway provide this by default)
 - [ ] Review data retention — generated documents contain personal details; decide how long they're kept and who can access them
 - [ ] Confirm the deployed watermark/PDF pipeline end-to-end on Render (approve a real request, check the customer actually gets a watermarked PDF, not a `.docx` fallback)
@@ -196,4 +226,8 @@ volume (Groq's free tier covers meaningful usage before any billing
 kicks in). Both WhatsApp and Groq are pay-per-use past the free tier, so
 costs scale with real traffic rather than jumping in flat-fee tiers.
 Docker builds on Render's free plan don't add direct cost, but do use
-more build minutes than the old native-runtime setup.
+more build minutes than the old native-runtime setup. Neon/Supabase's
+free Postgres tier covers this comfortably too, though both auto-suspend
+an idle database after a period of inactivity (briefly slower on the
+next request while it wakes back up) — not a real cost, just worth
+knowing about.
