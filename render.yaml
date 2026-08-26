@@ -6,6 +6,8 @@ services:
     dockerContext: .
     plan: free
     envVars:
+      - key: DATABASE_URL
+        sync: false
       - key: GROQ_API_KEY
         sync: false
       - key: GROQ_MODEL

@@ -1,8 +1,11 @@
 """
-Database setup. Uses SQLite by default (zero setup, single file).
-Swap SQLALCHEMY_DATABASE_URL to a Postgres URL (e.g. from Supabase/Neon)
-when you need multi-user/production scale — no other code needs to change since SQLAlchemy
-abstracts the difference.
+Database setup. Uses SQLite by default (zero setup, single file) when no
+DATABASE_URL is set -- fine for local dev, but Render's web service
+filesystem is ephemeral (wiped on every deploy/restart), so a SQLite
+file there doesn't survive. Set DATABASE_URL to a hosted Postgres
+instance (e.g. Supabase/Neon, both have a free tier) for anything that
+needs to persist across deploys -- no other code needs to change since
+SQLAlchemy abstracts the difference.
 """
 
 import os
@@ -14,11 +17,19 @@ from sqlalchemy.orm import declarative_base, sessionmaker
 # whether the app or a helper script (e.g. scripts/create_admin.py) is
 # the one running — avoids accidentally creating two separate DB files.
 BACKEND_DIR = os.path.dirname(os.path.abspath(__file__))
-SQLALCHEMY_DATABASE_URL = f"sqlite:///{os.path.join(BACKEND_DIR, 'app.db')}"
+SQLALCHEMY_DATABASE_URL = os.environ.get("DATABASE_URL") or f"sqlite:///{os.path.join(BACKEND_DIR, 'app.db')}"
 
-engine = create_engine(
-    SQLALCHEMY_DATABASE_URL, connect_args={"check_same_thread": False}
-)
+# Supabase/Neon/Heroku-style providers commonly hand out a "postgres://"
+# URL, but SQLAlchemy's default psycopg2 dialect requires "postgresql://"
+# -- rewrite it rather than making every deployer remember this gotcha.
+if SQLALCHEMY_DATABASE_URL.startswith("postgres://"):
+    SQLALCHEMY_DATABASE_URL = SQLALCHEMY_DATABASE_URL.replace("postgres://", "postgresql://", 1)
+
+# check_same_thread is a SQLite-only connect arg; passing it to psycopg2
+# raises an error, so only apply it when actually running on SQLite.
+_connect_args = {"check_same_thread": False} if SQLALCHEMY_DATABASE_URL.startswith("sqlite") else {}
+
+engine = create_engine(SQLALCHEMY_DATABASE_URL, connect_args=_connect_args)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 
