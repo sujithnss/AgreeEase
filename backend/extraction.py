@@ -7,12 +7,15 @@ efficiency and speed.
 
 import json
 import os
+import re
 import requests
 from templates_config import TEMPLATES, required_fields_for, PREFERRED_LANGUAGE_FIELD
 
 GROQ_API_KEY = os.environ.get("GROQ_API_KEY")
 MODEL = os.environ.get("GROQ_MODEL") or "openai/gpt-oss-120b"
 GROQ_CHAT_URL = "https://api.groq.com/openai/v1/chat/completions"
+
+_LATIN_LETTERS_RE = re.compile(r"[A-Za-z]")
 
 
 def _chat(system: str, user: str, max_tokens: int) -> str:
@@ -273,3 +276,53 @@ def merge_followup_reply(previous_fields: dict, agreement_type: str, reply_messa
         "next_question": next_question,
         "status": "ready_for_staff_review" if not missing else "awaiting_customer_info",
     }
+
+
+TRANSLITERATION_SYSTEM_PROMPT = """You transliterate English-typed values
+from a Kerala legal document (names, addresses, property/business
+descriptions) into Malayalam script, based on how they sound in English —
+you do NOT translate them by meaning, and you do NOT alter spellings
+beyond what's needed to represent the same sounds in Malayalam script.
+Keep any digits, punctuation, or text already in Malayalam exactly as-is.
+
+You will receive a JSON object of field_name: value pairs. Respond with
+ONLY a JSON object using the EXACT SAME keys, each mapped to its
+Malayalam-script version, nothing else."""
+
+
+def transliterate_fields_to_malayalam(fields: dict) -> dict:
+    """Returns a copy of `fields` with English-typed (Latin-script) string
+    values transliterated into Malayalam script — e.g. "Rahul Menon" ->
+    "രാഹുൽ മേനോൻ" — so a Malayalam-language document doesn't end up mixing
+    Malayalam boilerplate with English proper nouns. Fields with no Latin
+    letters (already Malayalam, or purely numeric/date fields) are left
+    untouched and never sent to the API. Falls back to the original
+    fields unchanged if the API call or parsing fails, so a
+    transliteration hiccup never blocks document generation."""
+    candidates = {
+        key: value
+        for key, value in fields.items()
+        if key != PREFERRED_LANGUAGE_FIELD
+        and isinstance(value, str)
+        and _LATIN_LETTERS_RE.search(value)
+    }
+    if not candidates:
+        return dict(fields)
+
+    prompt = (
+        "Transliterate these into Malayalam script:\n"
+        + json.dumps(candidates, ensure_ascii=False)
+    )
+    try:
+        raw = _chat(TRANSLITERATION_SYSTEM_PROMPT, prompt, max_tokens=800)
+        raw = raw.replace("```json", "").replace("```", "").strip()
+        transliterated = json.loads(raw)
+    except (requests.exceptions.RequestException, json.JSONDecodeError, KeyError):
+        return dict(fields)
+
+    merged = dict(fields)
+    for key in candidates:
+        value = transliterated.get(key)
+        if value:
+            merged[key] = value
+    return merged

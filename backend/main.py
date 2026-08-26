@@ -35,6 +35,7 @@ from extraction import (
     draft_ready_message,
     renewal_reminder_message,
     resolve_doc_language,
+    transliterate_fields_to_malayalam,
 )
 from docgen import generate_document, convert_to_pdf
 from templates_config import TEMPLATES, available_languages_for, required_fields_for
@@ -420,6 +421,23 @@ async def approve_request(
     if doc_language not in available_languages_for(req.agreement_type):
         doc_language = "malayalam"
     req.doc_language = doc_language
+
+    # Auto-transliterate any English-typed name/address fields into
+    # Malayalam script so the generated document doesn't mix Malayalam
+    # boilerplate with English proper nouns. Done once here (rather than
+    # inside docgen.py) so the draft and final copy always use the exact
+    # same spelling — it's persisted onto the request, not re-derived per
+    # document. Fields already in Malayalam, or with no Latin letters
+    # (dates, amounts), are left untouched.
+    if doc_language == "malayalam":
+        transliterated = transliterate_fields_to_malayalam(req.extracted_fields)
+        changed_fields = [
+            field for field in transliterated
+            if transliterated[field] != req.extracted_fields.get(field)
+        ]
+        req.extracted_fields = transliterated
+        if changed_fields:
+            log_action(db, request_id, "fields_transliterated", staff_name, {"fields": changed_fields})
 
     req.status = "approved"
     req.reviewed_by = staff_name
