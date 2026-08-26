@@ -102,7 +102,15 @@
             {% endif %}
 
             <label>Staff Name</label>
+            {% if staff_list %}
+            <select name="staff_name" required>
+                {% for name in staff_list %}
+                <option value="{{ name }}" {% if name == user %}selected{% endif %}>{{ name }}</option>
+                {% endfor %}
+            </select>
+            {% else %}
             <input name="staff_name" required>
+            {% endif %}
 
             <button id="approve-btn" type="submit">Approve & Send Watermarked Draft to Customer</button>
         </form>

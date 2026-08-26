@@ -384,6 +384,87 @@ def delete_document(
     return RedirectResponse(url=referer, status_code=303)
 
 
+@app.get("/dashboard/staff", response_class=HTMLResponse)
+def staff_list(request: Request, db: Session = Depends(get_db)):
+    redirect = require_login(request)
+    if redirect:
+        return redirect
+    staff = db.query(AdminUser).order_by(AdminUser.username).all()
+    return templates.TemplateResponse(
+        request, "staff.html", {"staff": staff, "user": get_current_user(request)}
+    )
+
+
+@app.post("/dashboard/staff/add")
+def staff_add(
+    request: Request,
+    db: Session = Depends(get_db),
+    username: str = Form(...),
+    password: str = Form(...),
+    confirm_password: str = Form(...),
+):
+    redirect = require_login(request)
+    if redirect:
+        return redirect
+
+    username = username.strip()
+    staff = db.query(AdminUser).order_by(AdminUser.username).all()
+    error = None
+    if not username or not password:
+        error = "Username and password are required."
+    elif password != confirm_password:
+        error = "Passwords don't match."
+
+    if error:
+        return templates.TemplateResponse(
+            request, "staff.html", {"staff": staff, "user": get_current_user(request), "error": error},
+            status_code=400,
+        )
+
+    # Mirrors scripts/create_admin.py: an existing username gets its
+    # password reset rather than erroring, so this form doubles as the
+    # "reset a staff member's password" flow too.
+    existing = db.query(AdminUser).filter(AdminUser.username == username).first()
+    if existing:
+        existing.password_hash = hash_password(password)
+        db.commit()
+    else:
+        db.add(AdminUser(username=username, password_hash=hash_password(password)))
+        db.commit()
+
+    return RedirectResponse(url="/dashboard/staff", status_code=303)
+
+
+@app.post("/dashboard/staff/{staff_id}/delete")
+def staff_delete(staff_id: int, request: Request, db: Session = Depends(get_db)):
+    redirect = require_login(request)
+    if redirect:
+        return redirect
+
+    target = db.query(AdminUser).filter(AdminUser.id == staff_id).first()
+    if not target:
+        return RedirectResponse(url="/dashboard/staff", status_code=303)
+
+    total_staff = db.query(AdminUser).count()
+    current_username = get_current_user(request)
+    staff = db.query(AdminUser).order_by(AdminUser.username).all()
+    error = None
+    if target.username == current_username:
+        error = "You can't delete the account you're currently logged in as."
+    elif total_staff <= 1:
+        error = "Can't delete the last remaining staff account -- it would lock everyone out."
+
+    if error:
+        return templates.TemplateResponse(
+            request, "staff.html", {"staff": staff, "user": get_current_user(request), "error": error},
+            status_code=400,
+        )
+
+    db.delete(target)
+    db.commit()
+    return RedirectResponse(url="/dashboard/staff", status_code=303)
+
+
 @app.get("/dashboard/{request_id}", response_class=HTMLResponse)
 def review_request(request_id: int, request: Request, db: Session = Depends(get_db)):
     redirect = require_login(request)
@@ -393,6 +474,7 @@ def review_request(request_id: int, request: Request, db: Session = Depends(get_
     if not req:
         raise HTTPException(status_code=404, detail="Request not found")
     template_info = _effective_template_info(req.agreement_type)
+    staff_list = [u.username for u in db.query(AdminUser).order_by(AdminUser.username).all()]
     return templates.TemplateResponse(
         request,
         "review.html",
@@ -400,6 +482,7 @@ def review_request(request_id: int, request: Request, db: Session = Depends(get_
             "req": req,
             "template_info": template_info,
             "user": get_current_user(request),
+            "staff_list": staff_list,
             "draft_filename": os.path.basename(req.draft_file_path) if req.draft_file_path else None,
             "draft_pdf_filename": os.path.basename(req.draft_pdf_path) if req.draft_pdf_path else None,
             "final_filename": os.path.basename(req.final_file_path) if req.final_file_path else None,

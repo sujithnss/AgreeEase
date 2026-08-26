@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>AgreeEase - Manage Staff</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 30px; background: #f7f7f7; }
+        .topbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+        h1 { color: #1F4E79; margin-bottom: 0; font-size: 22px; }
+        .topbar a { color: #1F4E79; text-decoration: none; font-size: 13px; margin-left: 15px; }
+        .box { background: white; padding: 20px; border-radius: 6px; margin-bottom: 20px; max-width: 420px; }
+        label { display: block; margin-top: 10px; font-weight: bold; font-size: 13px; color: #555; }
+        input { width: 100%; padding: 8px; margin-top: 4px; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box; }
+        button { background: #1F4E79; color: white; border: none; padding: 10px 18px; border-radius: 4px; cursor: pointer; margin-top: 15px; }
+        button.del { background: #c0392b; padding: 6px 12px; font-size: 13px; margin-top: 0; }
+        .error { background: #fdecea; border: 1px solid #f5b7b1; color: #922b21; padding: 10px 14px; border-radius: 4px; font-size: 13px; margin-bottom: 15px; }
+        table { width: 100%; border-collapse: collapse; background: white; }
+        th, td { padding: 10px; border-bottom: 1px solid #ddd; text-align: left; font-size: 14px; }
+        th { background: #1F4E79; color: white; }
+        .hint { font-size: 12px; color: #888; margin-top: 4px; }
+    </style>
+</head>
+<body>
+    <div class="topbar">
+        <h1>Manage Staff</h1>
+        <div>
+            Logged in as <strong>{{ user }}</strong>
+            <a href="/dashboard">Back to Dashboard</a>
+            <a href="/logout">Log out</a>
+        </div>
+    </div>
+
+    {% if error %}
+    <p class="error">{{ error }}</p>
+    {% endif %}
+
+    <table>
+        <tr><th>Username</th><th>Added</th><th>Action</th></tr>
+        {% for s in staff %}
+        <tr>
+            <td>{{ s.username }}</td>
+            <td>{{ s.created_at.strftime('%d-%m-%Y') if s.created_at else '-' }}</td>
+            <td>
+                <form method="post" action="/dashboard/staff/{{ s.id }}/delete" onsubmit="return confirm('Remove staff account {{ s.username }}?');">
+                    <button class="del" type="submit">Remove</button>
+                </form>
+            </td>
+        </tr>
+        {% endfor %}
+    </table>
+
+    <div class="box">
+        <h3>Add / Reset Staff Account</h3>
+        <p class="hint">If the username already exists, this resets their password instead of creating a duplicate.</p>
+        <form method="post" action="/dashboard/staff/add">
+            <label>Username</label>
+            <input name="username" required>
+            <label>Password</label>
+            <input type="password" name="password" required>
+            <label>Confirm Password</label>
+            <input type="password" name="confirm_password" required>
+            <button type="submit">Save</button>
+        </form>
+    </div>
+</body>
+</html>
