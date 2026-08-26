@@ -317,7 +317,8 @@ def transliterate_fields_to_malayalam(fields: dict) -> dict:
         raw = _chat(TRANSLITERATION_SYSTEM_PROMPT, prompt, max_tokens=800)
         raw = raw.replace("```json", "").replace("```", "").strip()
         transliterated = json.loads(raw)
-    except (requests.exceptions.RequestException, json.JSONDecodeError, KeyError):
+    except (requests.exceptions.RequestException, json.JSONDecodeError, KeyError) as e:
+        print(f"[Transliteration ERROR] Falling back to original text for {list(candidates)}: {e}")
         return dict(fields)
 
     merged = dict(fields)
