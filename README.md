@@ -34,7 +34,7 @@ actual watermarked draft. See "Watermarked PDF drafts" under Features.
 | `backend/auth.py` | Staff login (session cookies, PBKDF2 password hashing) |
 | `backend/dateutils.py` | Agreement end-date calculation (dependency-free) |
 | `backend/whatsapp.py` | WhatsApp Cloud API sender — uploads the PDF/docx and sends it as a document message (console "stub" mode until real credentials are added) |
-| `backend/templates_html/` | Dashboard pages: login, list, review, renewals |
+| `backend/templates_html/` | Dashboard pages: login, list (auto-refreshing), review, renewals, documents, staff, reports |
 | `templates_docx/` | Sample `.docx` templates with `{{placeholders}}` |
 | `scripts/create_admin.py` | CLI to create/reset staff login accounts |
 | `Dockerfile` | Render deploy image — installs headless LibreOffice + Malayalam fonts so `docgen.py` can convert drafts to PDF (Render's native Python runtime can't install system packages) |
@@ -55,9 +55,24 @@ actual watermarked draft. See "Watermarked PDF drafts" under Features.
   the draft — the final in-house copy has no header/watermark at all.
   If LibreOffice isn't available, sending falls back to the raw
   watermarked `.docx` rather than blocking the approval.
+- **Auto-transliteration into Malayalam script** — if a customer types in
+  English but asks for a Malayalam document, names/addresses typed in
+  Latin script are auto-transliterated (not translated — "Rahul Menon"
+  becomes "രാഹുൽ മേനോൻ" by sound, not by meaning) at approval time, via
+  one Groq call in `extraction.py`. Only fields that actually contain
+  Latin letters are sent (dates/amounts are skipped), the result is
+  persisted on the request so the draft and final copy always match, and
+  it falls back to the original English text — never blocking approval —
+  if the call fails.
+- **Live dashboard** — `/dashboard` polls a lightweight endpoint every
+  10s and reloads automatically when a new WhatsApp message arrives or
+  a request's status changes, so staff don't have to keep hitting refresh.
 - **Staff login** — dashboard is behind session-based auth. A default
   admin account is auto-created on first run (credentials printed to the
-  console once) — replace it with your own via `scripts/create_admin.py`.
+  console once) — replace it with your own via `scripts/create_admin.py`,
+  or manage accounts (add / reset password / remove) from
+  `/dashboard/staff` once you're logged in. The approval form's "Staff
+  Name" is a dropdown of real accounts, not free text.
 - **Documents tagged by customer** — every generated file is named
   `request_<id>_<phone>_<name>_<draft|final>.docx`, and the DB also
   stores `draft_file_path` / `final_file_path`, so any document can be
@@ -69,6 +84,15 @@ actual watermarked draft. See "Watermarked PDF drafts" under Features.
 - **Payment status** — each request tracks `payment_status`
   (unpaid/partial/paid) and `amount_paid`, editable from the review page
   and visible as a badge on the main dashboard list.
+- **Reports** (`/dashboard/reports`) — KPI tiles (total / completed /
+  pending / new-in-range), a daily request-volume trend chart, a
+  pipeline-status breakdown, and a by-agreement-type breakdown, filterable
+  to the last 7/30/90 days. Plain inline SVG + vanilla JS, no charting
+  library. Deliberately no pie charts: the pipeline breakdown is a
+  stacked bar with a darkening blue ramp (it's a real stage progression,
+  not arbitrary categories), and the type breakdown is a single-hue bar
+  chart, since a bar reads more accurately than a pie for comparing a
+  handful of values.
 
 ## Setup
 
@@ -136,11 +160,11 @@ This mirrors the real shape Meta's Cloud API sends, so the same request
 body works once you switch to a live webhook.
 
 Then:
-1. Log in and open `/dashboard` — the request appears with fields the AI extracted.
-2. Open it, correct anything needed, enter your name, **Approve** — this generates the watermarked PDF draft and (in stub mode) prints the WhatsApp message to the console instead of sending it.
+1. Log in and open `/dashboard` — the request appears with fields the AI extracted (the page auto-refreshes, so a new message shows up without a manual reload).
+2. Open it, correct anything needed, pick your name from the **Staff Name** dropdown, **Approve** — this generates the watermarked PDF draft (transliterating any English-typed name/address fields into Malayalam first, if that's the document language) and, in stub mode, prints the WhatsApp message to the console instead of sending it.
 3. Click **Customer Confirmed** to generate the final in-house copy and calculate the renewal date.
 4. Update **Payment Status** as payment comes in.
-5. Visit `/dashboard/renewals` to see agreements approaching their end date.
+5. Visit `/dashboard/renewals` to see agreements approaching their end date, or `/dashboard/reports` for volume/pipeline charts.
 
 ## Wiring up real WhatsApp
 
