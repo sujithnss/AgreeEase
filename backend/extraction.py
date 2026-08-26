@@ -19,20 +19,31 @@ _LATIN_LETTERS_RE = re.compile(r"[A-Za-z]")
 
 
 def _chat(system: str, user: str, max_tokens: int) -> str:
+    # gpt-oss models spend part of max_tokens on internal reasoning before
+    # writing the actual answer -- Groq's own docs note that below ~1000
+    # tokens the reasoning can eat the whole budget and leave content
+    # empty, even though the call "succeeds". reasoning_effort=low keeps
+    # that reasoning short (this task never needs deep reasoning anyway);
+    # only send it for gpt-oss models, since it's not a universal Groq
+    # parameter and other models may reject an unknown field.
+    payload = {
+        "model": MODEL,
+        "max_tokens": max_tokens,
+        "messages": [
+            {"role": "system", "content": system},
+            {"role": "user", "content": user},
+        ],
+    }
+    if "gpt-oss" in MODEL:
+        payload["reasoning_effort"] = "low"
+
     response = requests.post(
         GROQ_CHAT_URL,
         headers={
             "Authorization": f"Bearer {GROQ_API_KEY}",
             "Content-Type": "application/json",
         },
-        json={
-            "model": MODEL,
-            "max_tokens": max_tokens,
-            "messages": [
-                {"role": "system", "content": system},
-                {"role": "user", "content": user},
-            ],
-        },
+        json=payload,
         timeout=30,
     )
     response.raise_for_status()
@@ -98,7 +109,7 @@ itself, not the language they're chatting in."""
 
 def extract_from_message(message: str) -> dict:
     prompt = EXTRACTION_SYSTEM_PROMPT.format(schema_block=_schema_block())
-    raw = _chat(prompt, message, max_tokens=1000)
+    raw = _chat(prompt, message, max_tokens=1500)
     raw = raw.replace("```json", "").replace("```", "").strip()
     return json.loads(raw)
 
@@ -116,7 +127,7 @@ def generate_followup_question(missing_fields: list, language: str) -> str:
         f"Missing fields needed: {', '.join(missing_fields)}\n"
         f"Write the follow-up WhatsApp message now."
     )
-    return _chat(FOLLOWUP_SYSTEM_PROMPT, prompt, max_tokens=300)
+    return _chat(FOLLOWUP_SYSTEM_PROMPT, prompt, max_tokens=1200)
 
 
 def process_message(message: str) -> dict:
@@ -256,7 +267,7 @@ def merge_followup_reply(previous_fields: dict, agreement_type: str, reply_messa
     raw = _chat(
         "You extract structured agreement data from a single message. Respond with ONLY valid JSON.",
         prompt,
-        max_tokens=500,
+        max_tokens=1200,
     )
     raw = raw.replace("```json", "").replace("```", "").strip()
     new_fields = json.loads(raw)
@@ -314,7 +325,7 @@ def transliterate_fields_to_malayalam(fields: dict) -> dict:
         + json.dumps(candidates, ensure_ascii=False)
     )
     try:
-        raw = _chat(TRANSLITERATION_SYSTEM_PROMPT, prompt, max_tokens=800)
+        raw = _chat(TRANSLITERATION_SYSTEM_PROMPT, prompt, max_tokens=1200)
         raw = raw.replace("```json", "").replace("```", "").strip()
         transliterated = json.loads(raw)
     except (requests.exceptions.RequestException, json.JSONDecodeError, KeyError) as e:
