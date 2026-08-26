@@ -25,7 +25,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse, FileResponse, Plai
 from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
 from sqlalchemy.orm import Session
-from sqlalchemy import and_
+from sqlalchemy import and_, func
 
 from db import init_db, get_db, SessionLocal, AgreementRequest, AuditLog, AdminUser
 from extraction import (
@@ -236,6 +236,23 @@ def dashboard(request: Request, db: Session = Depends(get_db)):
     return templates.TemplateResponse(
         request, "list.html", {"requests": all_requests, "user": get_current_user(request)}
     )
+
+
+@app.get("/dashboard/poll")
+def dashboard_poll(request: Request, db: Session = Depends(get_db)):
+    """Lightweight JSON endpoint the dashboard list page polls every few
+    seconds so new WhatsApp messages / status changes show up without
+    staff manually refreshing. Returns just enough (latest updated_at +
+    row count) for the client to tell something changed and reload the
+    full page -- avoids re-sending the whole request list on every poll."""
+    if require_login(request):
+        return {"login_required": True}
+    latest, count = (
+        db.query(func.max(AgreementRequest.updated_at), func.count(AgreementRequest.id))
+        .filter(AgreementRequest.is_deleted.isnot(True))
+        .one()
+    )
+    return {"latest": latest.isoformat() if latest else None, "count": count}
 
 
 @app.get("/dashboard/renewals", response_class=HTMLResponse)

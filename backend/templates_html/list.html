@@ -56,5 +56,34 @@
         </tr>
         {% endfor %}
     </table>
+    <script>
+        // Polls /dashboard/poll every 10s and reloads the page if anything
+        // changed (new request, status change, etc.) -- avoids staff having
+        // to manually refresh to see a new WhatsApp message come in. First
+        // poll just establishes the baseline; only later polls that differ
+        // from it trigger a reload.
+        let baseline = null;
+        async function checkForUpdates() {
+            let data;
+            try {
+                const res = await fetch("/dashboard/poll");
+                data = await res.json();
+            } catch (e) {
+                return; // network hiccup -- just try again next interval
+            }
+            if (data.login_required) {
+                location.reload();
+                return;
+            }
+            const current = data.latest + "|" + data.count;
+            if (baseline === null) {
+                baseline = current;
+            } else if (current !== baseline) {
+                location.reload();
+            }
+        }
+        checkForUpdates();
+        setInterval(checkForUpdates, 10000);
+    </script>
 </body>
 </html>
