@@ -12,7 +12,9 @@ import re
 import shutil
 import subprocess
 import datetime
+from xml.sax.saxutils import quoteattr
 from docxtpl import DocxTemplate
+from docx.oxml import parse_xml
 from templates_config import get_template, get_template_file
 from dateutils import calculate_agreement_end_date
 
@@ -31,6 +33,56 @@ def _slugify(value: str, max_len: int = 30) -> str:
         return "unknown"
     value = re.sub(r"[^a-zA-Z0-9]+", "-", value.strip().lower()).strip("-")
     return value[:max_len] or "unknown"
+
+
+def _add_diagonal_watermark(document, text: str) -> None:
+    """Injects a real diagonal, translucent watermark into every section's
+    header — the same VML shape trick Word's own Insert > Watermark > Text
+    feature generates, so LibreOffice (which already has to render legacy
+    Word watermarks correctly) converts it the same way. python-docx has no
+    high-level API for this, so it's added as raw OOXML on the header's
+    paragraph run rather than through the normal python-docx object model.
+    """
+    watermark_xml = f"""
+    <w:pict xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"
+            xmlns:v="urn:schemas-microsoft-com:vml"
+            xmlns:o="urn:schemas-microsoft-com:office:office">
+      <v:shapetype id="_x0000_t136" coordsize="1600,21600" o:spt="136"
+          adj="10800" path="m@7,0l@8,0m@5,21600l@6,21600e">
+        <v:formulas>
+          <v:f eqn="sum #0 0 10800"/><v:f eqn="prod #0 2 1"/>
+          <v:f eqn="sum 21600 0 @1"/><v:f eqn="sum 0 0 @2"/>
+          <v:f eqn="sum 21600 0 @3"/><v:f eqn="if @0 @3 @1"/>
+          <v:f eqn="if @0 @4 @2"/><v:f eqn="if @0 #0 21600"/>
+          <v:f eqn="if @0 0 #0"/><v:f eqn="if @0 21600 @8"/>
+          <v:f eqn="if @0 @9 0"/><v:f eqn="if @0 @6 @5"/>
+        </v:formulas>
+        <v:path textpathok="t" o:connecttype="custom"
+            o:connectlocs="10800,0;0,10800;10800,21600;21600,10800"
+            o:connectangles="270,180,90,0"/>
+        <v:textpath on="t" fitshape="t"/>
+        <v:handles><v:h position="#0,bottomRight" xrange="0,21600"/></v:handles>
+      </v:shapetype>
+      <v:shape id="AgreeEaseWatermark" o:spid="_x0000_s2050" type="#_x0000_t136"
+          style="position:absolute;margin-left:0;margin-top:0;width:415pt;height:207.5pt;
+          rotation:315;z-index:-251654144;mso-position-horizontal:center;
+          mso-position-horizontal-relative:margin;mso-position-vertical:center;
+          mso-position-vertical-relative:margin"
+          o:allowincell="f" fillcolor="silver" stroked="f">
+        <v:fill opacity=".5"/>
+        <v:textpath style="font-family:&quot;Calibri&quot;;font-size:1pt" string={quoteattr(text)}/>
+      </v:shape>
+    </w:pict>
+    """
+    for section in document.sections:
+        header = section.header
+        # Sections default to "linked to previous" with no real header part
+        # of their own — paragraphs added before flipping this would be
+        # written to a throwaway element and never actually saved.
+        header.is_linked_to_previous = False
+        paragraph = header.paragraphs[0] if header.paragraphs else header.add_paragraph()
+        run = paragraph.add_run()
+        run._r.append(parse_xml(watermark_xml))
 
 
 def calculate_stamp_duty(agreement_type: str, fields: dict) -> str:
@@ -88,11 +140,21 @@ def generate_document(
     context["agreement_number"] = f"AGR-{request_id:06d}"
     context["today_date"] = datetime.date.today().strftime("%d-%m-%Y")
     context["stamp_duty_amount"] = calculate_stamp_duty(agreement_type, fields)
-    context["watermark_text"] = "*** DRAFT - NOT VALID FOR STAMPING ***" if draft else ""
+    # No longer a body-text banner (see _add_diagonal_watermark below) —
+    # kept as an empty string rather than removed so existing templates
+    # with a {{ watermark_text }} placeholder still render (as a blank line).
+    context["watermark_text"] = ""
     end_date = calculate_agreement_end_date(fields)
     context["end_date"] = end_date.strftime("%d-%m-%Y") if end_date else ""
 
     doc.render(context)
+
+    if draft:
+        # NOT doc.get_docx() -- that reloads a fresh unrendered copy of the
+        # template whenever is_rendered is already True (which it is, right
+        # after doc.render() above), silently discarding everything render()
+        # just filled in. doc.docx is the actual rendered Document object.
+        _add_diagonal_watermark(doc.docx, "DRAFT - NOT VALID FOR STAMPING")
 
     suffix = "draft" if draft else "final"
     lang_tag = "ml" if language == "malayalam" else "en"
