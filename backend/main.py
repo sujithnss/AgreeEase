@@ -255,6 +255,93 @@ def dashboard_poll(request: Request, db: Session = Depends(get_db)):
     return {"latest": latest.isoformat() if latest else None, "count": count}
 
 
+STATUS_PIPELINE = [
+    ("awaiting_customer_info", "Awaiting Customer Info"),
+    ("ready_for_staff_review", "Ready for Staff Review"),
+    ("approved", "Approved"),
+    ("draft_sent", "Draft Sent"),
+    ("confirmed", "Confirmed"),
+    ("ready_to_print", "Ready to Print"),
+]
+COMPLETED_STATUSES = ("confirmed", "ready_to_print")
+PENDING_STATUSES = ("awaiting_customer_info", "ready_for_staff_review")
+
+
+@app.get("/dashboard/reports", response_class=HTMLResponse)
+def reports(request: Request, db: Session = Depends(get_db), range_days: int = 30):
+    """Staff-facing summary: how many requests came in and how they're
+    moving through the pipeline. Status/type breakdowns are all-time
+    (they describe current state, not activity in a window); the daily
+    trend and "new in range" KPI are scoped to range_days."""
+    redirect = require_login(request)
+    if redirect:
+        return redirect
+
+    range_days = range_days if range_days in (7, 30, 90) else 30
+    now = datetime.datetime.utcnow()
+    since = now - datetime.timedelta(days=range_days)
+
+    base_q = db.query(AgreementRequest).filter(AgreementRequest.is_deleted.isnot(True))
+    total = base_q.count()
+    completed = base_q.filter(AgreementRequest.status.in_(COMPLETED_STATUSES)).count()
+    pending = base_q.filter(AgreementRequest.status.in_(PENDING_STATUSES)).count()
+    new_in_range = base_q.filter(AgreementRequest.created_at >= since).count()
+
+    created_dates = [
+        row[0].date() for row in
+        base_q.filter(AgreementRequest.created_at >= since)
+        .with_entities(AgreementRequest.created_at).all()
+        if row[0]
+    ]
+    daily_counts = {}
+    for i in range(range_days):
+        day = (now - datetime.timedelta(days=range_days - 1 - i)).date()
+        daily_counts[day] = 0
+    for d in created_dates:
+        if d in daily_counts:
+            daily_counts[d] += 1
+    trend = [{"label": d.strftime("%d %b"), "count": c} for d, c in sorted(daily_counts.items())]
+
+    status_counts = dict(
+        db.query(AgreementRequest.status, func.count(AgreementRequest.id))
+        .filter(AgreementRequest.is_deleted.isnot(True))
+        .group_by(AgreementRequest.status)
+        .all()
+    )
+    status_breakdown = [
+        {"key": key, "label": label, "count": status_counts.get(key, 0)}
+        for key, label in STATUS_PIPELINE
+        if status_counts.get(key, 0) > 0
+    ]
+
+    type_counts = dict(
+        db.query(AgreementRequest.agreement_type, func.count(AgreementRequest.id))
+        .filter(AgreementRequest.is_deleted.isnot(True), AgreementRequest.agreement_type.isnot(None))
+        .group_by(AgreementRequest.agreement_type)
+        .all()
+    )
+    type_breakdown = [
+        {"label": TEMPLATES.get(key, {}).get("label", key), "count": count}
+        for key, count in sorted(type_counts.items(), key=lambda kv: -kv[1])
+    ]
+
+    return templates.TemplateResponse(
+        request,
+        "reports.html",
+        {
+            "user": get_current_user(request),
+            "range_days": range_days,
+            "total": total,
+            "completed": completed,
+            "pending": pending,
+            "new_in_range": new_in_range,
+            "trend": trend,
+            "status_breakdown": status_breakdown,
+            "type_breakdown": type_breakdown,
+        },
+    )
+
+
 @app.get("/dashboard/renewals", response_class=HTMLResponse)
 def renewals(request: Request, db: Session = Depends(get_db)):
     """Agreements whose end date is within the next 30 days (or already
