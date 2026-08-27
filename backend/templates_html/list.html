@@ -21,6 +21,10 @@
         a.btn { background: #1F4E79; color: white; padding: 6px 12px; border-radius: 4px; text-decoration: none; font-size: 13px; }
         .actions { display: flex; gap: 6px; align-items: center; }
         button.del { background: #c0392b; color: white; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer; font-size: 13px; }
+        .filters { display: flex; gap: 8px; align-items: center; margin-bottom: 14px; }
+        .filters input, .filters select { padding: 6px 10px; border: 1px solid #ccc; border-radius: 4px; font-size: 13px; }
+        .filters button { background: #1F4E79; color: white; border: none; padding: 7px 14px; border-radius: 4px; cursor: pointer; font-size: 13px; }
+        .filters a.clear { font-size: 13px; color: #888; text-decoration: none; }
     </style>
 </head>
 <body>
@@ -32,9 +36,29 @@
             <a href="/dashboard/renewals">Upcoming Renewals</a>
             <a href="/dashboard/documents">Documents</a>
             <a href="/dashboard/staff">Manage Staff</a>
+            <a href="/dashboard/export">Export CSV</a>
             <a href="/logout">Log out</a>
         </div>
     </div>
+    <form class="filters" method="get" action="/dashboard">
+        <input type="text" name="q" value="{{ q }}" placeholder="Search name or phone">
+        <select name="status">
+            <option value="">All statuses</option>
+            {% for key, label in status_pipeline %}
+            <option value="{{ key }}" {{ 'selected' if status_filter == key else '' }}>{{ label }}</option>
+            {% endfor %}
+        </select>
+        <select name="payment">
+            <option value="">All payments</option>
+            <option value="unpaid" {{ 'selected' if payment_filter == 'unpaid' else '' }}>Unpaid</option>
+            <option value="partial" {{ 'selected' if payment_filter == 'partial' else '' }}>Partial</option>
+            <option value="paid" {{ 'selected' if payment_filter == 'paid' else '' }}>Paid</option>
+        </select>
+        <button type="submit">Filter</button>
+        {% if q or status_filter or payment_filter %}
+        <a class="clear" href="/dashboard">Clear</a>
+        {% endif %}
+    </form>
     <table>
         <tr>
             <th>ID</th><th>Customer</th><th>Phone</th><th>Type</th><th>Status</th><th>Payment</th><th>Action</th>
@@ -57,6 +81,9 @@
             </td>
         </tr>
         {% endfor %}
+        {% if not requests %}
+        <tr><td colspan="7">No requests match these filters.</td></tr>
+        {% endif %}
     </table>
     <script>
         // Polls /dashboard/poll every 10s and reloads the page if anything

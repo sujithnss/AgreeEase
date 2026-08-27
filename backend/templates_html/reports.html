@@ -150,6 +150,22 @@
         {% endfor %}
     </div>
 
+    <div class="box">
+        <h3>Staff performance &mdash; last {{ range_days }} days</h3>
+        <table class="data-table">
+            <tr><th>Staff</th><th>Approvals</th><th>Avg. turnaround (created &rarr; approved)</th></tr>
+            {% for s in staff_performance %}
+            <tr>
+                <td>{{ s.staff }}</td>
+                <td>{{ s.approvals }}</td>
+                <td>{{ s.avg_turnaround_hours }} hrs</td>
+            </tr>
+            {% else %}
+            <tr><td colspan="3" style="color: var(--text-muted);">No approvals in this range.</td></tr>
+            {% endfor %}
+        </table>
+    </div>
+
     <script>
         // Trend line chart -- plain SVG, no charting library. Data comes
         // from the server-rendered table (single source of truth); this

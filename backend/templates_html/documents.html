@@ -16,6 +16,10 @@
         a.dl { color: #1F4E79; }
         button.del { background: #c0392b; color: white; border: none; padding: 3px 10px; border-radius: 4px; cursor: pointer; font-size: 12px; }
         .meta { font-size: 12px; color: #777; }
+        .filters { display: flex; gap: 8px; align-items: center; margin-bottom: 14px; }
+        .filters input { padding: 6px 10px; border: 1px solid #ccc; border-radius: 4px; font-size: 13px; width: 260px; }
+        .filters button { background: #1F4E79; color: white; border: none; padding: 7px 14px; border-radius: 4px; cursor: pointer; font-size: 13px; }
+        .filters a.clear { font-size: 13px; color: #888; text-decoration: none; }
     </style>
 </head>
 <body>
@@ -28,6 +32,13 @@
             <a href="/logout">Log out</a>
         </div>
     </div>
+    <form class="filters" method="get" action="/dashboard/documents">
+        <input type="text" name="q" value="{{ q }}" placeholder="Search request #, name, phone, or type">
+        <button type="submit">Filter</button>
+        {% if q %}
+        <a class="clear" href="/dashboard/documents">Clear</a>
+        {% endif %}
+    </form>
     <table>
         <tr>
             <th>Generated</th><th>Request</th><th>Customer</th><th>Files</th>

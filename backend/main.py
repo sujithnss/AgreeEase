@@ -18,14 +18,17 @@ Run with:
 """
 
 import os
+import csv
+import io
+import json
 import datetime
 
 from fastapi import FastAPI, Request, Form, Depends, HTTPException
-from fastapi.responses import HTMLResponse, RedirectResponse, FileResponse, PlainTextResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, FileResponse, PlainTextResponse, StreamingResponse
 from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
 from sqlalchemy.orm import Session
-from sqlalchemy import and_, func
+from sqlalchemy import and_, or_, func
 
 from db import init_db, get_db, SessionLocal, AgreementRequest, AuditLog, AdminUser
 from extraction import (
@@ -223,18 +226,35 @@ async def whatsapp_webhook(request: Request, db: Session = Depends(get_db)):
 # Staff dashboard (all routes below require login)
 # ---------------------------------------------------------------------------
 @app.get("/dashboard", response_class=HTMLResponse)
-def dashboard(request: Request, db: Session = Depends(get_db)):
+def dashboard(request: Request, db: Session = Depends(get_db), q: str = "", status: str = "", payment: str = ""):
     redirect = require_login(request)
     if redirect:
         return redirect
-    all_requests = (
-        db.query(AgreementRequest)
-        .filter(AgreementRequest.is_deleted.isnot(True))
-        .order_by(AgreementRequest.id.desc())
-        .all()
-    )
+
+    q = q.strip()
+    query = db.query(AgreementRequest).filter(AgreementRequest.is_deleted.isnot(True))
+    if q:
+        like = f"%{q}%"
+        query = query.filter(
+            or_(AgreementRequest.customer_name.ilike(like), AgreementRequest.customer_phone.ilike(like))
+        )
+    if status:
+        query = query.filter(AgreementRequest.status == status)
+    if payment:
+        query = query.filter(AgreementRequest.payment_status == payment)
+    all_requests = query.order_by(AgreementRequest.id.desc()).all()
+
     return templates.TemplateResponse(
-        request, "list.html", {"requests": all_requests, "user": get_current_user(request)}
+        request,
+        "list.html",
+        {
+            "requests": all_requests,
+            "user": get_current_user(request),
+            "q": q,
+            "status_filter": status,
+            "payment_filter": payment,
+            "status_pipeline": STATUS_PIPELINE,
+        },
     )
 
 
@@ -325,6 +345,37 @@ def reports(request: Request, db: Session = Depends(get_db), range_days: int = 3
         for key, count in sorted(type_counts.items(), key=lambda kv: -kv[1])
     ]
 
+    # Staff performance: approvals per staff member and average turnaround
+    # (time from request creation to approval) within the selected range.
+    # Joined against AgreementRequest rather than read off reviewed_by so
+    # this reflects who actually clicked Approve, per the audit log.
+    approvals = (
+        db.query(AuditLog.actor, AuditLog.timestamp, AgreementRequest.created_at)
+        .join(AgreementRequest, AgreementRequest.id == AuditLog.request_id)
+        .filter(
+            AuditLog.action == "approved",
+            AgreementRequest.is_deleted.isnot(True),
+            AgreementRequest.created_at >= since,
+        )
+        .all()
+    )
+    staff_stats = {}
+    for actor, approved_at, created_at in approvals:
+        if not actor:
+            continue
+        stats = staff_stats.setdefault(actor, {"approvals": 0, "total_hours": 0.0})
+        stats["approvals"] += 1
+        if approved_at and created_at:
+            stats["total_hours"] += (approved_at - created_at).total_seconds() / 3600
+    staff_performance = [
+        {
+            "staff": actor,
+            "approvals": s["approvals"],
+            "avg_turnaround_hours": round(s["total_hours"] / s["approvals"], 1) if s["approvals"] else 0,
+        }
+        for actor, s in sorted(staff_stats.items(), key=lambda kv: -kv[1]["approvals"])
+    ]
+
     return templates.TemplateResponse(
         request,
         "reports.html",
@@ -338,6 +389,7 @@ def reports(request: Request, db: Session = Depends(get_db), range_days: int = 3
             "trend": trend,
             "status_breakdown": status_breakdown,
             "type_breakdown": type_breakdown,
+            "staff_performance": staff_performance,
         },
     )
 
@@ -368,8 +420,55 @@ def renewals(request: Request, db: Session = Depends(get_db)):
     )
 
 
+@app.get("/dashboard/export")
+def export_requests(request: Request, db: Session = Depends(get_db)):
+    """One-click CSV export of every non-deleted request -- a lightweight,
+    in-app backup/reporting option, distinct from the real Postgres backup
+    story covered in README's "Database persistence" section. Registered
+    before /dashboard/{request_id} so "export" isn't swallowed as a request
+    id."""
+    redirect = require_login(request)
+    if redirect:
+        return redirect
+
+    rows = (
+        db.query(AgreementRequest)
+        .filter(AgreementRequest.is_deleted.isnot(True))
+        .order_by(AgreementRequest.id.asc())
+        .all()
+    )
+
+    buffer = io.StringIO()
+    writer = csv.writer(buffer)
+    writer.writerow([
+        "id", "customer_name", "customer_phone", "agreement_type", "language",
+        "doc_language", "status", "payment_status", "amount_paid", "reviewed_by",
+        "stamp_duty_amount", "created_at", "updated_at", "agreement_end_date",
+        "extracted_fields",
+    ])
+    for r in rows:
+        writer.writerow([
+            r.id, r.customer_name, r.customer_phone, r.agreement_type, r.language,
+            r.doc_language, r.status, r.payment_status, r.amount_paid, r.reviewed_by,
+            r.stamp_duty_amount,
+            r.created_at.isoformat() if r.created_at else "",
+            r.updated_at.isoformat() if r.updated_at else "",
+            r.agreement_end_date.isoformat() if r.agreement_end_date else "",
+            json.dumps(r.extracted_fields or {}, ensure_ascii=False),
+        ])
+
+    log_action(db, 0, "requests_exported_csv", get_current_user(request), {"row_count": len(rows)})
+
+    filename = f"agreeease_requests_{datetime.datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.csv"
+    return StreamingResponse(
+        iter([buffer.getvalue()]),
+        media_type="text/csv",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
 @app.get("/dashboard/documents", response_class=HTMLResponse)
-def documents(request: Request, db: Session = Depends(get_db)):
+def documents(request: Request, db: Session = Depends(get_db), q: str = ""):
     """Audit trail of every generated document across all requests — draft
     .docx/PDF and final .docx — with download and delete controls, so staff
     can review or clean up generated files (e.g. demo/test runs) from the UI
@@ -379,6 +478,7 @@ def documents(request: Request, db: Session = Depends(get_db)):
     if redirect:
         return redirect
 
+    q = q.strip()
     logs = (
         db.query(AuditLog)
         .filter(AuditLog.action.in_(["draft_generated_sent", "final_copy_generated"]))
@@ -427,8 +527,18 @@ def documents(request: Request, db: Session = Depends(get_db)):
             }
         )
 
+    if q:
+        ql = q.lower()
+        rows = [
+            r for r in rows
+            if ql in str(r["request_id"])
+            or (r["customer_name"] and ql in r["customer_name"].lower())
+            or (r["customer_phone"] and ql in r["customer_phone"].lower())
+            or (r["agreement_type"] and ql in r["agreement_type"].lower())
+        ]
+
     return templates.TemplateResponse(
-        request, "documents.html", {"rows": rows, "user": get_current_user(request)}
+        request, "documents.html", {"rows": rows, "user": get_current_user(request), "q": q}
     )
 
 
