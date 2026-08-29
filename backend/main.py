@@ -899,6 +899,35 @@ def confirm_and_print(request_id: int, request: Request, db: Session = Depends(g
     return RedirectResponse(url=f"/dashboard/{request_id}", status_code=303)
 
 
+@app.post("/dashboard/{request_id}/generate_final_pdf")
+def generate_final_pdf(request_id: int, request: Request, db: Session = Depends(get_db)):
+    """Backfills final_pdf_path for a request that was already confirmed
+    before the print-from-dashboard feature existed (or whose PDF
+    conversion failed the first time, e.g. LibreOffice was briefly down) --
+    the normal confirm/print flow only generates the PDF once, at confirm
+    time, and confirm_and_print() can't just be re-run from the UI once a
+    request is ready_to_print. Only converts the existing final .docx; does
+    not regenerate the document itself or touch agreement_end_date."""
+    redirect = require_login(request)
+    if redirect:
+        return redirect
+
+    req = db.query(AgreementRequest).filter(AgreementRequest.id == request_id).first()
+    if not req:
+        raise HTTPException(status_code=404, detail="Request not found")
+    if not req.final_file_path:
+        raise HTTPException(status_code=400, detail="No final copy generated yet for this request")
+
+    try:
+        req.final_pdf_path = convert_to_pdf(req.final_file_path)
+        db.commit()
+        log_action(db, request_id, "final_pdf_generated", get_current_user(request), {"pdf_path": req.final_pdf_path})
+    except RuntimeError as e:
+        log_action(db, request_id, "final_pdf_conversion_failed", get_current_user(request), {"error": str(e)})
+
+    return RedirectResponse(url=f"/dashboard/{request_id}", status_code=303)
+
+
 @app.post("/dashboard/{request_id}/payment")
 def update_payment(
     request_id: int,

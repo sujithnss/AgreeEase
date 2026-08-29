@@ -90,10 +90,17 @@
         {% if req.status == 'ready_to_print' and req.payment_status == 'paid' %}
         {% if final_pdf_filename %}
         <button type="button" class="print-btn" onclick="printFinalCopy('{{ final_pdf_filename }}')">🖨️ Print Final Copy</button>
+        {% elif final_filename %}
+        <form method="post" action="/dashboard/{{ req.id }}/generate_final_pdf">
+            <button type="submit" class="print-btn">Generate PDF for Printing</button>
+        </form>
+        <p class="lang-note">
+            No print-ready PDF yet for this request (it was likely confirmed before this feature existed).
+            Click above to generate one from the existing final .docx.
+        </p>
         {% else %}
         <p class="lang-note">
-            Payment is marked paid and the final copy is ready, but no PDF preview is available
-            (PDF conversion didn't run) — download the final .docx above and print it manually.
+            Payment is marked paid and the request is ready to print, but no final copy has been generated yet.
         </p>
         {% endif %}
         {% elif req.status == 'ready_to_print' %}
