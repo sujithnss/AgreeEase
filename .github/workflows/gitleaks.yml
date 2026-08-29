@@ -1,0 +1,28 @@
+name: Secret scanning (gitleaks)
+
+# Scans every push and pull request for accidentally committed secrets
+# (API keys, tokens, credentials) using gitleaks. Complements GitHub's
+# own native secret scanning (Settings -> Code security and analysis) --
+# gitleaks catches things outside GitHub's partner-provider pattern list
+# (e.g. a Groq API key), so the two together give broader coverage than
+# either alone. Free for a personal-account public repo, no license
+# needed -- see https://github.com/gitleaks/gitleaks-action.
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  gitleaks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

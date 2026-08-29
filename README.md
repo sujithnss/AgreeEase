@@ -39,6 +39,7 @@ actual watermarked draft. See "Watermarked PDF drafts" under Features.
 | `scripts/create_admin.py` | CLI to create/reset staff login accounts |
 | `Dockerfile` | Render deploy image — installs headless LibreOffice + Malayalam fonts so `docgen.py` can convert drafts to PDF (Render's native Python runtime can't install system packages) |
 | `render.yaml` | Render Blueprint — Docker-based web service config + env var list |
+| `.github/workflows/gitleaks.yml` | CI secret scanning — fails the check if a commit contains a likely API key/token (see "Secret scanning" below) |
 | `CLAUDE.md` | Notes for AI-assisted development on this repo (see below) |
 
 ## Features
@@ -252,6 +253,81 @@ unset, so this is a config change, not a code change:
 - [x] Verify the WhatsApp webhook's `X-Hub-Signature-256` header (set `WHATSAPP_APP_SECRET`) so the endpoint isn't open to anyone who finds the URL — `WHATSAPP_APP_SECRET` is set in Render and confirmed live: an unsigned request now gets `403`, and real WhatsApp messages still process normally
 - [x] Rate-limit the webhook (`WEBHOOK_RATE_LIMIT_PER_PHONE` / `WEBHOOK_RATE_LIMIT_GLOBAL`, see `ratelimit.py`) so a bug or abuse can't run up the Groq bill
 - [ ] Resolve Aadhaar handling before collecting it again — `rental_agreement`'s `required_fields` deliberately excludes `landlord_aadhar`/`tenant_aadhar` for now (the document template still has the placeholder; it just renders blank). Get a real answer — ideally legal advice — on consent/storage/retention under India's Aadhaar Act and the DPDP Act 2023 before turning collection back on. In the meantime, Aadhaar details need to be collected offline (in person, at signing).
+
+## Production plan
+
+A phased view of what's needed to run this for real customers, grouped
+by concern rather than as one flat list. The checklist above is the
+tactical detail; this is how those items — plus a few not yet tracked
+there — fit into a rollout.
+
+**Phase 1 — before real customer traffic (blocking).** Everything in the
+checklist above: real Kerala stamp duty rates, real template wording,
+`SESSION_SECRET` rotated, default admin replaced, a real WhatsApp number
+connected and the watermark/PDF pipeline confirmed end-to-end, legal
+sign-off on the watermark, and Aadhaar handling resolved before turning
+that collection back on. Webhook signature verification and rate
+limiting are already done. Also: configure Postgres backups **and
+actually perform one test restore** before relying on them — a backup
+that's never been restored is a guess, not a plan.
+
+**Phase 2 — first month of real traffic.** Not yet tracked above, but
+matters once real customers are on it:
+- Basic uptime/error alerting. Right now a Groq outage, a broken PDF
+  conversion, or a bug in the duplicate-request guard fails silently —
+  nobody finds out until a customer complains. Even a free uptime check
+  plus a webhook into Slack/email on repeated 5xx responses closes most
+  of this gap.
+- A documented manual fallback for staff for when Render (or the
+  webhook) is down: check the WhatsApp Business app directly rather than
+  assuming a customer's message made it into the dashboard. Meta retries
+  webhook delivery for a while, then gives up.
+- Move generated documents (`backend/generated/`) off Render's ephemeral
+  filesystem to durable storage (e.g. S3/Cloudflare R2). Right now a
+  restart between "final copy generated" and "printed" loses the file
+  even though the database still says `ready_to_print`.
+- Decide and write down a data retention policy: how long drafts/final
+  copies and audit log entries are kept, and who on staff can access
+  them.
+
+**Phase 3 — ongoing, as the business grows.**
+- Revisit Aadhaar collection once the compliance question is resolved —
+  mask or encrypt at rest rather than storing it in plaintext JSON.
+- Watch Render's free-tier memory under concurrent LibreOffice
+  conversions if request volume grows; 512MB can get tight.
+- Consider a real migration tool (e.g. Alembic) once the schema outgrows
+  what `db.py`'s hand-rolled `_add_missing_columns()` can comfortably
+  track — it works today but doesn't scale indefinitely.
+- A mobile-responsive dashboard if staff start reviewing requests from a
+  phone.
+
+## Secret scanning (GitHub)
+
+This repository is **public**, so it's worth catching an accidentally
+committed secret (API key, token) before it's pushed, not after. Two
+layers:
+
+1. **GitHub's native secret scanning + push protection** — free on
+   public repos, but needs a one-time toggle (repo settings aren't
+   something a `git push` can change): go to the repo on GitHub →
+   **Settings → Code security and analysis**, confirm **Secret
+   scanning** is on (usually the default for public repos), and turn on
+   **Push protection** too — that's the part that actively blocks a push
+   containing a recognized secret pattern before it ever lands in
+   history, rather than just alerting afterward.
+2. **`gitleaks` via GitHub Actions** (`.github/workflows/gitleaks.yml`)
+   — runs on every push and pull request and fails the check if it finds
+   a likely secret. This is a deliberate second layer: GitHub's native
+   scanner mainly recognizes known formats from partner providers (AWS,
+   Stripe, Slack, etc.), and something like a Groq API key isn't
+   guaranteed to be on that list. Gitleaks uses broader pattern +
+   entropy-based detection, so it catches things the native scanner
+   might miss. No paid license needed for a personal-account public repo.
+
+Neither of these replaces the basics: `.env`/`backend/.env` are already
+gitignored and have never been committed (verified against the full git
+history), and secrets belong in Render's environment variables, never in
+code.
 
 ## Cost estimate (early-stage volume)
 
