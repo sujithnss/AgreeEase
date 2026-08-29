@@ -20,9 +20,31 @@
         .lang-note { background: #fff3cd; border: 1px solid #f0d98c; color: #7a5b00; padding: 10px 14px; border-radius: 4px; font-size: 13px; margin-top: 10px; }
         .error-banner { background: #fdecea; border: 1px solid #f5c6cb; color: #c0392b; padding: 10px 14px; border-radius: 4px; font-size: 13px; margin-bottom: 15px; }
         input.field-missing { border-color: #c0392b; background: #fdecea; }
+        .print-btn { background: #27ae60; }
     </style>
 </head>
 <body>
+    <script>
+        // Opens the final PDF in a new tab and triggers the browser print
+        // dialog on it -- staff still get the standard print dialog (a
+        // browser can't silently print without one), but it's one click
+        // instead of opening the file, finding it in Downloads, then
+        // printing it separately. onload isn't reliable across every
+        // browser's built-in PDF viewer, so it's paired with a fallback
+        // timeout.
+        function printFinalCopy(filename) {
+            const w = window.open('/download/' + filename, '_blank');
+            if (!w) return;
+            let printed = false;
+            const doPrint = () => {
+                if (printed) return;
+                printed = true;
+                try { w.print(); } catch (e) { /* tab may not support it -- staff can still Ctrl+P manually */ }
+            };
+            w.addEventListener('load', doPrint);
+            setTimeout(doPrint, 1000);
+        }
+    </script>
     {% macro file_row(label, filename, req_id) %}
     <div class="file-row meta">
         {{ label }}: <a href="/download/{{ filename }}">{{ filename }}</a>
@@ -63,6 +85,20 @@
         {% if draft_pdf_filename %}{{ file_row('Draft PDF (sent to customer via WhatsApp)', draft_pdf_filename, req.id) }}{% endif %}
         {% if draft_filename %}{{ file_row('Draft file (.docx)', draft_filename, req.id) }}{% endif %}
         {% if final_filename %}{{ file_row('Final file', final_filename, req.id) }}{% endif %}
+        {% if final_pdf_filename %}{{ file_row('Final PDF', final_pdf_filename, req.id) }}{% endif %}
+
+        {% if req.status == 'ready_to_print' and req.payment_status == 'paid' %}
+        {% if final_pdf_filename %}
+        <button type="button" class="print-btn" onclick="printFinalCopy('{{ final_pdf_filename }}')">🖨️ Print Final Copy</button>
+        {% else %}
+        <p class="lang-note">
+            Payment is marked paid and the final copy is ready, but no PDF preview is available
+            (PDF conversion didn't run) — download the final .docx above and print it manually.
+        </p>
+        {% endif %}
+        {% elif req.status == 'ready_to_print' %}
+        <p class="lang-note">Final copy is ready to print, but payment isn't marked "Paid" yet — see Payment Status below.</p>
+        {% endif %}
     </div>
 
     <div class="box">

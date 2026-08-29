@@ -36,6 +36,7 @@ from extraction import (
     merge_followup_reply,
     completion_message,
     draft_ready_message,
+    duplicate_request_message,
     renewal_reminder_message,
     resolve_doc_language,
     transliterate_fields_to_malayalam,
@@ -48,6 +49,11 @@ from auth import hash_password, verify_password, require_login, get_current_user
 
 app = FastAPI(title="AgreeEase")
 templates = Jinja2Templates(directory="templates_html")
+# list.html renders the Print button straight off the AgreementRequest row
+# (unlike review.html, which pre-computes basenames in the route) -- needed
+# to turn a stored full path like "generated/foo_final.pdf" into the bare
+# filename /download/{filename} expects.
+templates.env.filters["basename"] = os.path.basename
 
 SESSION_SECRET = os.environ.get("SESSION_SECRET", "dev-only-change-this-secret")
 app.add_middleware(SessionMiddleware, secret_key=SESSION_SECRET)
@@ -56,6 +62,14 @@ app.add_middleware(SessionMiddleware, secret_key=SESSION_SECRET)
 # Meta echoes it back on the GET verification handshake below to prove
 # you control this endpoint.
 WHATSAPP_VERIFY_TOKEN = os.environ.get("WHATSAPP_VERIFY_TOKEN", "")
+
+# Statuses where a request is actively moving through the pipeline but
+# isn't the "still awaiting the customer's first reply" case handled
+# separately above (open_request) -- used to detect a duplicate re-send
+# from the same customer. Deliberately excludes "ready_to_print": once a
+# request is done, a new message from the same customer is presumed to be
+# a genuinely new ask, not a duplicate of the finished one.
+ACTIVE_DUPLICATE_STATUSES = ("ready_for_staff_review", "approved", "draft_sent")
 
 init_db()
 _seed_db = SessionLocal()
@@ -194,6 +208,35 @@ async def whatsapp_webhook(request: Request, db: Session = Depends(get_db)):
 
     # Fresh request
     result = process_message(message_text)
+
+    # Guard against the same customer re-sending the same ask while an
+    # earlier request from them is already in the pipeline -- without this,
+    # staff would see two separate rows for one customer and could end up
+    # working them as if unrelated. Only fires when BOTH the phone number
+    # AND the (extracted) customer name match an in-progress request --
+    # matching on phone alone would also flag legitimate cases, like the
+    # same landlord sending in a second, different property's agreement.
+    new_customer_name = (result["extracted_fields"].get("tenant_name") or "").strip().lower()
+    if new_customer_name:
+        active_request = (
+            db.query(AgreementRequest)
+            .filter(
+                AgreementRequest.customer_phone == customer_phone,
+                AgreementRequest.status.in_(ACTIVE_DUPLICATE_STATUSES),
+                AgreementRequest.is_deleted.isnot(True),
+                func.lower(func.trim(AgreementRequest.customer_name)) == new_customer_name,
+            )
+            .order_by(AgreementRequest.id.desc())
+            .first()
+        )
+        if active_request:
+            log_action(
+                db, active_request.id, "duplicate_request_blocked", "system",
+                {"incoming_message": message_text},
+            )
+            send_whatsapp_message(customer_phone, duplicate_request_message(result["language"]))
+            return {"status": "ok", "duplicate_of_request_id": active_request.id}
+
     new_request = AgreementRequest(
         customer_phone=customer_phone,
         customer_name=result["extracted_fields"].get("tenant_name"),
@@ -503,6 +546,8 @@ def documents(request: Request, db: Session = Depends(get_db), q: str = ""):
         elif log.action == "final_copy_generated":
             if log.details.get("path"):
                 file_specs.append(("Final (.docx, in-house print)", log.details["path"]))
+            if log.details.get("pdf_path"):
+                file_specs.append(("Final PDF (in-house print)", log.details["pdf_path"]))
 
         files = [
             {
@@ -684,6 +729,7 @@ def review_request(request_id: int, request: Request, db: Session = Depends(get_
             "draft_filename": os.path.basename(req.draft_file_path) if req.draft_file_path else None,
             "draft_pdf_filename": os.path.basename(req.draft_pdf_path) if req.draft_pdf_path else None,
             "final_filename": os.path.basename(req.final_file_path) if req.final_file_path else None,
+            "final_pdf_filename": os.path.basename(req.final_pdf_path) if req.final_pdf_path else None,
             "incomplete_fields": [f for f in incomplete_fields_param.split(",") if f],
         },
     )
@@ -821,6 +867,19 @@ def confirm_and_print(request_id: int, request: Request, db: Session = Depends(g
         language=req.doc_language or "malayalam",
     )
     req.final_file_path = final_path
+
+    # Convert to PDF too so staff can open/print it straight from the
+    # dashboard with one click -- a raw .docx has no browser print path.
+    # Falls back to leaving final_pdf_path unset if LibreOffice/Word isn't
+    # available, same as the draft's PDF conversion; staff can still
+    # download and print the .docx manually in that case.
+    try:
+        final_pdf_path = convert_to_pdf(final_path)
+        req.final_pdf_path = final_pdf_path
+    except RuntimeError as e:
+        final_pdf_path = None
+        log_action(db, request_id, "final_pdf_conversion_failed", "system", {"error": str(e)})
+
     req.status = "ready_to_print"
 
     fields_with_duration = {
@@ -832,7 +891,10 @@ def confirm_and_print(request_id: int, request: Request, db: Session = Depends(g
         req.agreement_end_date = datetime.datetime.combine(end_date, datetime.time.min)
 
     db.commit()
-    log_action(db, request_id, "final_copy_generated", "system", {"path": final_path, "end_date": str(end_date)})
+    log_action(
+        db, request_id, "final_copy_generated", "system",
+        {"path": final_path, "pdf_path": final_pdf_path, "end_date": str(end_date)},
+    )
 
     return RedirectResponse(url=f"/dashboard/{request_id}", status_code=303)
 

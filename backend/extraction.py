@@ -220,6 +220,34 @@ def completion_message(language: str) -> str:
     return _COMPLETION_MESSAGE_EN
 
 
+_DUPLICATE_REQUEST_MESSAGE_EN = (
+    "We already have a request from you in progress and our team is working on it "
+    "-- no need to resend. If this message is actually for a DIFFERENT agreement "
+    "(e.g. a different property or a different name), please say so clearly and "
+    "we'll open a new request for it."
+)
+_DUPLICATE_REQUEST_MESSAGE_ML = (
+    "നിങ്ങളുടെ ഒരു അഭ്യർത്ഥന ഇതിനകം ഞങ്ങളുടെ ടീം പരിശോധിച്ചു വരികയാണ് -- "
+    "വീണ്ടും അയക്കേണ്ടതില്ല. ഇത് വേറൊരു കരാറിനു വേണ്ടിയാണെങ്കിൽ (വേറൊരു "
+    "സ്ഥലം അല്ലെങ്കിൽ വേറൊരു പേര്), ദയവായി അത് വ്യക്തമായി പറയുക -- ഞങ്ങൾ "
+    "അതിനായി പുതിയൊരു അഭ്യർത്ഥന തുടങ്ങാം."
+)
+
+
+def duplicate_request_message(language: str) -> str:
+    """Sent instead of silently opening a second request when the same
+    phone number + customer name already has one actively moving through
+    the pipeline -- avoids staff seeing two rows for what's actually one
+    customer re-sending the same ask. Deliberately does NOT trigger just
+    off phone number alone, since the same number legitimately can have
+    multiple, different requests (e.g. a landlord with two properties)."""
+    if language == "malayalam":
+        return _DUPLICATE_REQUEST_MESSAGE_ML
+    if language == "mixed":
+        return f"{_DUPLICATE_REQUEST_MESSAGE_EN}\n{_DUPLICATE_REQUEST_MESSAGE_ML}"
+    return _DUPLICATE_REQUEST_MESSAGE_EN
+
+
 _DRAFT_READY_MESSAGE_EN = "Here is your draft agreement for review. Please confirm if all details are correct."
 _DRAFT_READY_MESSAGE_ML = "ഇതാ നിങ്ങളുടെ കരാർ ഡ്രാഫ്റ്റ്. എല്ലാ വിവരങ്ങളും ശരിയാണെന്ന് ഉറപ്പുവരുത്തി ദയവായി സ്ഥിരീകരിക്കുക."
 

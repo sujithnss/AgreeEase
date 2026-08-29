@@ -83,6 +83,10 @@ class AgreementRequest(Base):
     # isn't a great preview experience on a phone.
     draft_pdf_path = Column(String, nullable=True)
     final_file_path = Column(String, nullable=True)
+    # PDF conversion of the final copy -- lets staff open/print it straight
+    # from the dashboard (browsers can't print a raw .docx) without needing
+    # LibreOffice/Word installed on whatever machine is doing the printing.
+    final_pdf_path = Column(String, nullable=True)
 
     # Renewal tracking — computed from start_date + duration once the
     # agreement is confirmed, so upcoming renewals can be queried directly.
@@ -139,6 +143,11 @@ def _add_missing_columns():
         if "is_deleted" not in existing:
             conn.exec_driver_sql(
                 "ALTER TABLE agreement_requests ADD COLUMN is_deleted BOOLEAN DEFAULT 0"
+            )
+            conn.commit()
+        if "final_pdf_path" not in existing:
+            conn.exec_driver_sql(
+                "ALTER TABLE agreement_requests ADD COLUMN final_pdf_path VARCHAR"
             )
             conn.commit()
 

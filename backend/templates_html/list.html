@@ -19,6 +19,8 @@
         .paid { background: #27ae60; }
         .partial { background: #d4ac0d; }
         a.btn { background: #1F4E79; color: white; padding: 6px 12px; border-radius: 4px; text-decoration: none; font-size: 13px; }
+        button.btn { border: none; cursor: pointer; }
+        .print-btn { background: #27ae60; }
         .actions { display: flex; gap: 6px; align-items: center; }
         button.del { background: #c0392b; color: white; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer; font-size: 13px; }
         .filters { display: flex; gap: 8px; align-items: center; margin-bottom: 14px; }
@@ -74,6 +76,9 @@
             <td>
                 <div class="actions">
                     <a class="btn" href="/dashboard/{{ r.id }}">Review</a>
+                    {% if r.status == 'ready_to_print' and r.payment_status == 'paid' and r.final_pdf_path %}
+                    <button class="btn print-btn" type="button" onclick="printFinalCopy('{{ r.final_pdf_path | basename }}')" title="Print final copy">🖨️ Print</button>
+                    {% endif %}
                     <form method="post" action="/dashboard/{{ r.id }}/delete" onsubmit="return confirm('Delete request #{{ r.id }} ({{ r.customer_name or r.customer_phone }})? This removes it from the dashboard (recoverable from the DB, not shown in the UI).');">
                         <button class="del" type="submit" title="Delete this request">Delete</button>
                     </form>
@@ -86,6 +91,23 @@
         {% endif %}
     </table>
     <script>
+        // Opens the final PDF in a new tab and triggers the browser's print
+        // dialog on it -- one click from the list instead of opening the
+        // review page first. onload isn't reliable across every browser's
+        // built-in PDF viewer, so it's paired with a fallback timeout.
+        function printFinalCopy(filename) {
+            const w = window.open('/download/' + filename, '_blank');
+            if (!w) return;
+            let printed = false;
+            const doPrint = () => {
+                if (printed) return;
+                printed = true;
+                try { w.print(); } catch (e) { /* tab may not support it -- staff can still Ctrl+P manually */ }
+            };
+            w.addEventListener('load', doPrint);
+            setTimeout(doPrint, 1000);
+        }
+
         // Polls /dashboard/poll every 10s and reloads the page if anything
         // changed (new request, status change, etc.) -- avoids staff having
         // to manually refresh to see a new WhatsApp message come in. First
