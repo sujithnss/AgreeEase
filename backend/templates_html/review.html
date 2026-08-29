@@ -67,10 +67,11 @@
 
     <div class="box">
         <h3>Extracted Fields (verify / correct before approving)</h3>
-        {% if missing_staff_fields %}
+        {% if incomplete_fields %}
         <p class="error-banner">
-            Not approved — these fields aren't collected from the customer over WhatsApp, so they need to be
-            filled in here before a draft can be generated and sent: <strong>{{ missing_staff_fields | join(', ') }}</strong>
+            Not approved — these fields are still empty, so a draft can't be generated and sent yet. If the
+            customer didn't (or couldn't) provide them over WhatsApp, fill them in here:
+            <strong>{{ incomplete_fields | join(', ') }}</strong>
         </p>
         {% endif %}
         {% if req.doc_language == 'malayalam' %}
@@ -85,7 +86,7 @@
         <form method="post" action="/dashboard/{{ req.id }}/approve" onsubmit="document.getElementById('approve-btn').disabled=true; document.getElementById('approve-btn').textContent='Generating draft — please wait, this can take up to 30s…';">
             {% for field in template_info.required_fields %}
             <label>{{ field }}</label>
-            <input name="{{ field }}" value="{{ req.extracted_fields.get(field, '') }}">
+            <input name="{{ field }}" value="{{ req.extracted_fields.get(field, '') }}" class="{{ 'field-missing' if field in incomplete_fields else '' }}">
             {% endfor %}
 
             {% if req.missing_fields %}
@@ -96,7 +97,7 @@
             <h4>Additional details (not collected from the customer &mdash; fill in before approving)</h4>
             {% for field in template_info.staff_fields %}
             <label>{{ field }}</label>
-            <input name="{{ field }}" value="{{ req.extracted_fields.get(field, '') }}" class="{{ 'field-missing' if field in missing_staff_fields else '' }}">
+            <input name="{{ field }}" value="{{ req.extracted_fields.get(field, '') }}" class="{{ 'field-missing' if field in incomplete_fields else '' }}">
             {% endfor %}
             {% endif %}
 

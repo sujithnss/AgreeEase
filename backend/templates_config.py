@@ -34,29 +34,35 @@ TEMPLATES = {
         # docstring) — the duration is fixed prose, not a field, so
         # agreement_duration_months is deliberately absent here (unlike
         # shop_agreement below). See FIXED_DURATION_MONTHS.
+        #
+        # Age/address/Aadhar are asked over WhatsApp like everything else
+        # here (customers do state them, and it saves staff from retyping
+        # what the customer already gave) — but the WhatsApp side won't
+        # always get a usable answer (e.g. a tenant may not have the
+        # landlord's Aadhar handy mid-chat), so these stay editable on the
+        # review dashboard as a correction/completion path, same as the
+        # rest of required_fields.
         "required_fields": [
             "landlord_name",
+            "landlord_age",
+            "landlord_address",
+            "landlord_aadhar",
             "tenant_name",
+            "tenant_age",
+            "tenant_address",
+            "tenant_aadhar",
             "property_address",
             "monthly_rent",
             "security_deposit",
             "start_date",
         ],
-        # Not gathered from the customer's WhatsApp message — staff fill
-        # these in on the review dashboard before approving, since a
-        # casual WhatsApp text won't include land-record-level detail
-        # like age or Aadhar number. property_description is the precise
-        # legal description of the property (taluk/village/door no./etc.)
-        # written as one flowing sentence, matching how the real specimen
-        # writes its "മാർജിൻ" clause — not broken into separate
-        # district/taluk/village fields.
+        # Land-record-level detail a casual WhatsApp message won't include —
+        # staff fill these in on the review dashboard before approving.
+        # property_description is the precise legal description of the
+        # property (taluk/village/door no./etc.) written as one flowing
+        # sentence, matching how the real specimen writes its "മാർജിൻ"
+        # clause — not broken into separate district/taluk/village fields.
         "staff_fields": [
-            "landlord_age",
-            "landlord_address",
-            "landlord_aadhar",
-            "tenant_age",
-            "tenant_address",
-            "tenant_aadhar",
             "fee_due_day",
             "property_description",
         ],

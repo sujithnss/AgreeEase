@@ -672,7 +672,7 @@ def review_request(request_id: int, request: Request, db: Session = Depends(get_
         raise HTTPException(status_code=404, detail="Request not found")
     template_info = _effective_template_info(req.agreement_type)
     staff_list = [u.username for u in db.query(AdminUser).order_by(AdminUser.username).all()]
-    missing_staff_fields_param = request.query_params.get("missing_staff_fields", "")
+    incomplete_fields_param = request.query_params.get("incomplete_fields", "")
     return templates.TemplateResponse(
         request,
         "review.html",
@@ -684,7 +684,7 @@ def review_request(request_id: int, request: Request, db: Session = Depends(get_
             "draft_filename": os.path.basename(req.draft_file_path) if req.draft_file_path else None,
             "draft_pdf_filename": os.path.basename(req.draft_pdf_path) if req.draft_pdf_path else None,
             "final_filename": os.path.basename(req.final_file_path) if req.final_file_path else None,
-            "missing_staff_fields": [f for f in missing_staff_fields_param.split(",") if f],
+            "incomplete_fields": [f for f in incomplete_fields_param.split(",") if f],
         },
     )
 
@@ -719,18 +719,23 @@ async def approve_request(
     # blocks approval, so a rejected attempt never loses their work.
     db.commit()
 
-    # staff_fields are never asked over WhatsApp (see templates_config.py) —
-    # staff must fill them in here. Nothing enforced that before, so it was
-    # possible to approve and send a customer a draft with blank Aadhar
-    # numbers or even a blank property description. Block that instead of
-    # just warning, since a sent draft can't be un-sent.
-    missing_staff_fields = [
-        field for field in template_info.get("staff_fields", [])
+    # Block approving with any field still blank -- whether it's a
+    # required_field the customer never answered over WhatsApp or a
+    # staff_field nobody typed in here. A sent draft can't be un-sent, so
+    # this has to be a hard stop, not just a warning. Uses the raw
+    # TEMPLATES entry rather than the effective one so the universal
+    # preferred_document_language field (which is legitimately optional --
+    # it defaults to Malayalam when the customer never states a
+    # preference) isn't treated as a missing field.
+    raw_template = TEMPLATES.get(req.agreement_type, {})
+    fields_to_check = raw_template.get("required_fields", []) + raw_template.get("staff_fields", [])
+    incomplete_fields = [
+        field for field in fields_to_check
         if not str(updated_fields.get(field) or "").strip()
     ]
-    if missing_staff_fields:
+    if incomplete_fields:
         return RedirectResponse(
-            url=f"/dashboard/{request_id}?missing_staff_fields={','.join(missing_staff_fields)}",
+            url=f"/dashboard/{request_id}?incomplete_fields={','.join(incomplete_fields)}",
             status_code=303,
         )
 
