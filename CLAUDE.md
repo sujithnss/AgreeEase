@@ -34,6 +34,13 @@ in `README.md`.
   no bcrypt dependency by design, to keep the install light).
 - `backend/dateutils.py` — dependency-free month-math for computing
   agreement end dates (no python-dateutil).
+- `backend/malayalam_numwords.py` — dependency-free Malayalam number-to-words
+  spelling (cardinals, ordinals, month names). Used by `docgen.py` to
+  populate the `_words`/`_ml` context fields (e.g. `monthly_rent_words`,
+  `today_day_ordinal_ml`) that `rental_agreement_ml.docx` renders alongside
+  the digit fields, matching the vendor specimen's convention of writing
+  amounts and dates in both digits and words. Validated against the real
+  specimen's own wording for several values — see the module docstring.
 - `backend/whatsapp.py` — WhatsApp Cloud API sender. Runs in console-log
   "stub" mode when `WHATSAPP_TOKEN` isn't set — this is intentional and
   lets the whole pipeline be tested without a live WhatsApp number.
@@ -80,10 +87,16 @@ in the app needs to change.
 
 - `docgen.py: calculate_stamp_duty()` — placeholder formula (1% of annual
   value). Replace with actual Kerala stamp duty rules.
-- `templates_docx/rental_agreement_ml.docx` — adapted from the vendor's
-  real specimen wording, but should still get a legal review before
-  production use (clause numbering/wording was cleaned up from an OCR'd
-  source, not copied verbatim). `shop_agreement.docx` is still illustrative
+- `templates_docx/rental_agreement_ml.docx` — the vendor's real specimen
+  ("Rent Agreement House With/Without Data") verbatim, with the customer/
+  staff-supplied spans swapped for `{{ jinja }}` placeholders in place —
+  wording, paragraph numbering, spacing, and hyphenation untouched. It's
+  specifically an **11-month house license** format: the duration is fixed
+  prose in the document, not a field (see `FIXED_DURATION_MONTHS` in
+  `templates_config.py`), and the property's precise legal description
+  (taluk/village/door no./etc.) is one free-text `property_description`
+  field rather than separate structured fields, matching how the specimen
+  writes its "മാർജിൻ" clause. `shop_agreement.docx` is still illustrative
   English-only wording and has no Malayalam variant yet.
 - `main.py: whatsapp_webhook()` — payload parsing is simplified for the
   now. Adjust to Meta's actual webhook JSON shape once a live number is

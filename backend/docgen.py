@@ -15,8 +15,13 @@ import datetime
 from xml.sax.saxutils import quoteattr
 from docxtpl import DocxTemplate
 from docx.oxml import parse_xml
-from templates_config import get_template, get_template_file
+from templates_config import get_template, get_template_file, duration_months_for
 from dateutils import calculate_agreement_end_date
+from malayalam_numwords import (
+    number_to_malayalam_words,
+    ordinal_malayalam_words,
+    month_name_malayalam,
+)
 
 # Resolve paths relative to the project root (one level up from backend/),
 # so this works regardless of the directory the app is launched from.
@@ -138,14 +143,40 @@ def generate_document(
 
     context = dict(fields)
     context["agreement_number"] = f"AGR-{request_id:06d}"
-    context["today_date"] = datetime.date.today().strftime("%d-%m-%Y")
+    today = datetime.date.today()
+    context["today_date"] = today.strftime("%d-%m-%Y")
     context["stamp_duty_amount"] = calculate_stamp_duty(agreement_type, fields)
     # No longer a body-text banner (see _add_diagonal_watermark below) —
     # kept as an empty string rather than removed so existing templates
     # with a {{ watermark_text }} placeholder still render (as a blank line).
     context["watermark_text"] = ""
-    end_date = calculate_agreement_end_date(fields)
+    fields_with_duration = {
+        **fields,
+        "agreement_duration_months": duration_months_for(agreement_type, fields),
+    }
+    end_date = calculate_agreement_end_date(fields_with_duration)
     context["end_date"] = end_date.strftime("%d-%m-%Y") if end_date else ""
+
+    # Malayalam word-form context, for templates (like rental_agreement_ml)
+    # that follow the vendor's convention of spelling dates and amounts in
+    # words alongside digits — see malayalam_numwords.py. Harmless no-ops
+    # for templates that don't reference these placeholders.
+    context["today_year"] = today.year
+    context["today_year_words"] = number_to_malayalam_words(today.year)
+    context["today_month_name_ml"] = month_name_malayalam(today.month)
+    context["today_day_ordinal_ml"] = ordinal_malayalam_words(today.day)
+    try:
+        context["monthly_rent_words"] = number_to_malayalam_words(
+            int(float(str(fields.get("monthly_rent", 0)).replace(",", "")))
+        )
+    except (ValueError, TypeError):
+        context["monthly_rent_words"] = ""
+    try:
+        context["security_deposit_words"] = number_to_malayalam_words(
+            int(float(str(fields.get("security_deposit", 0)).replace(",", "")))
+        )
+    except (ValueError, TypeError):
+        context["security_deposit_words"] = ""
 
     doc.render(context)
 

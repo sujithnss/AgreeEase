@@ -29,37 +29,35 @@ TEMPLATES = {
             "malayalam": "templates_docx/rental_agreement_ml.docx",
             "english": "templates_docx/rental_agreement_en.docx",
         },
+        # This template's wording is the vendor's real 11-month house
+        # license specimen verbatim (see templates_docx/rental_agreement_ml.docx
+        # docstring) — the duration is fixed prose, not a field, so
+        # agreement_duration_months is deliberately absent here (unlike
+        # shop_agreement below). See FIXED_DURATION_MONTHS.
         "required_fields": [
             "landlord_name",
             "tenant_name",
             "property_address",
             "monthly_rent",
             "security_deposit",
-            "agreement_duration_months",
             "start_date",
         ],
         # Not gathered from the customer's WhatsApp message — staff fill
         # these in on the review dashboard before approving, since a
         # casual WhatsApp text won't include land-record-level detail
-        # like age, parentage, Aadhar number, or survey schedule.
+        # like age or Aadhar number. property_description is the precise
+        # legal description of the property (taluk/village/door no./etc.)
+        # written as one flowing sentence, matching how the real specimen
+        # writes its "മാർജിൻ" clause — not broken into separate
+        # district/taluk/village fields.
         "staff_fields": [
             "landlord_age",
-            "landlord_parentage",
             "landlord_address",
             "landlord_aadhar",
             "tenant_age",
-            "tenant_parentage",
             "tenant_address",
             "tenant_aadhar",
-            "district",
-            "sub_district",
-            "taluk",
-            "village",
-            "desom",
-            "local_authority",
-            "house_no",
             "fee_due_day",
-            "interest_rate_percent",
             "property_description",
         ],
     },
@@ -112,3 +110,21 @@ def get_template_file(agreement_type: str, language: str = "malayalam") -> str:
 def available_languages_for(agreement_type: str) -> list:
     t = TEMPLATES.get(agreement_type)
     return list(t["files"].keys()) if t else []
+
+
+# Templates whose wording fixes the agreement duration in prose (so it's
+# not a customer/staff-editable field — see rental_agreement above).
+FIXED_DURATION_MONTHS = {
+    "rental_agreement": 11,
+}
+
+
+def duration_months_for(agreement_type: str, fields: dict):
+    """Resolves the agreement duration in months for end-date calculations
+    (see dateutils.calculate_agreement_end_date): whatever value is present
+    in the fields dict, falling back to a template's fixed duration for
+    templates like rental_agreement that don't collect the field at all."""
+    value = fields.get("agreement_duration_months")
+    if value:
+        return value
+    return FIXED_DURATION_MONTHS.get(agreement_type)

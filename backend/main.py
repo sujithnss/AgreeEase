@@ -41,7 +41,7 @@ from extraction import (
     transliterate_fields_to_malayalam,
 )
 from docgen import generate_document, convert_to_pdf
-from templates_config import TEMPLATES, available_languages_for, required_fields_for
+from templates_config import TEMPLATES, available_languages_for, required_fields_for, duration_months_for
 from whatsapp import send_whatsapp_message
 from dateutils import calculate_agreement_end_date
 from auth import hash_password, verify_password, require_login, get_current_user, ensure_default_admin
@@ -798,7 +798,11 @@ def confirm_and_print(request_id: int, request: Request, db: Session = Depends(g
     req.final_file_path = final_path
     req.status = "ready_to_print"
 
-    end_date = calculate_agreement_end_date(req.extracted_fields)
+    fields_with_duration = {
+        **req.extracted_fields,
+        "agreement_duration_months": duration_months_for(req.agreement_type, req.extracted_fields),
+    }
+    end_date = calculate_agreement_end_date(fields_with_duration)
     if end_date:
         req.agreement_end_date = datetime.datetime.combine(end_date, datetime.time.min)
 
