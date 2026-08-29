@@ -4,7 +4,7 @@ Same template is reused for both the customer-facing watermarked draft
 and the final in-house print copy — only `watermark_text` differs.
 
 Stamp duty calculation here is a placeholder formula — replace with the
-actual Kerala stamp duty rules your cousin's business uses.
+actual Kerala stamp duty rules the business uses.
 """
 
 import os
@@ -95,7 +95,7 @@ def calculate_stamp_duty(agreement_type: str, fields: dict) -> str:
     PLACEHOLDER LOGIC — replace with real Kerala stamp duty rules.
     Rental/lease stamp duty is often a percentage of (annual rent + deposit),
     but exact rates depend on agreement type, duration, and local rules.
-    Keep this as a single function so it's easy for your cousin's team
+    Keep this as a single function so it's easy for the business's team
     to correct without touching the rest of the code.
     """
     try:

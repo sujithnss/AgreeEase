@@ -239,7 +239,7 @@ unset, so this is a config change, not a code change:
 
 ## Before this goes near a real customer
 
-- [ ] Replace the stamp duty placeholder formula in `docgen.py` with your cousin's actual Kerala rates
+- [ ] Replace the stamp duty placeholder formula in `docgen.py` with the actual Kerala rates
 - [ ] Replace the sample template wording in `templates_docx/` with the real templates
 - [ ] Change `SESSION_SECRET` to a real random value (see `.env.example` for how to generate one)
 - [ ] Remove/replace the default admin account
@@ -249,7 +249,7 @@ unset, so this is a config change, not a code change:
 - [ ] Review data retention — generated documents contain personal details; decide how long they're kept and who can access them
 - [ ] Confirm the deployed watermark/PDF pipeline end-to-end on Render (approve a real request, check the customer actually gets a watermarked PDF, not a `.docx` fallback)
 - [ ] Get legal sign-off that the diagonal watermark text/placement reads clearly as "not valid for stamping" on an actual printed/viewed page, not just in the source XML
-- [x] Verify the WhatsApp webhook's `X-Hub-Signature-256` header (set `WHATSAPP_APP_SECRET`) so the endpoint isn't open to anyone who finds the URL
+- [x] Verify the WhatsApp webhook's `X-Hub-Signature-256` header (set `WHATSAPP_APP_SECRET`) so the endpoint isn't open to anyone who finds the URL — `WHATSAPP_APP_SECRET` is set in Render and confirmed live: an unsigned request now gets `403`, and real WhatsApp messages still process normally
 - [x] Rate-limit the webhook (`WEBHOOK_RATE_LIMIT_PER_PHONE` / `WEBHOOK_RATE_LIMIT_GLOBAL`, see `ratelimit.py`) so a bug or abuse can't run up the Groq bill
 - [ ] Resolve Aadhaar handling before collecting it again — `rental_agreement`'s `required_fields` deliberately excludes `landlord_aadhar`/`tenant_aadhar` for now (the document template still has the placeholder; it just renders blank). Get a real answer — ideally legal advice — on consent/storage/retention under India's Aadhaar Act and the DPDP Act 2023 before turning collection back on. In the meantime, Aadhaar details need to be collected offline (in person, at signing).
 

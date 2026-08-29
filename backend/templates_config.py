@@ -92,7 +92,7 @@ TEMPLATES = {
             "business_type",
         ],
     },
-    # Add more agreement types here as your cousin's team standardizes them.
+    # Add more agreement types here as the business standardizes them.
 }
 
 
