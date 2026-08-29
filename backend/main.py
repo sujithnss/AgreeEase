@@ -19,6 +19,8 @@ Run with:
 
 import os
 import csv
+import hashlib
+import hmac
 import io
 import json
 import datetime
@@ -44,6 +46,7 @@ from extraction import (
 from docgen import generate_document, convert_to_pdf
 from templates_config import TEMPLATES, available_languages_for, required_fields_for, duration_months_for
 from whatsapp import send_whatsapp_message
+from ratelimit import allow_webhook_message
 from dateutils import calculate_agreement_end_date
 from auth import hash_password, verify_password, require_login, get_current_user, ensure_default_admin
 
@@ -62,6 +65,27 @@ app.add_middleware(SessionMiddleware, secret_key=SESSION_SECRET)
 # Meta echoes it back on the GET verification handshake below to prove
 # you control this endpoint.
 WHATSAPP_VERIFY_TOKEN = os.environ.get("WHATSAPP_VERIFY_TOKEN", "")
+
+# The Meta App's "App Secret" (App Dashboard -> Settings -> Basic) -- NOT
+# the same as WHATSAPP_TOKEN (the page access token used to send messages)
+# or WHATSAPP_VERIFY_TOKEN (the one-time GET handshake token above). Meta
+# signs every webhook POST body with this via the X-Hub-Signature-256
+# header; verifying it is the only thing stopping anyone who finds this
+# URL from posting fabricated "customer messages" straight into the
+# pipeline (each of which triggers a paid Groq API call). Left blank, the
+# check is skipped -- same "stub mode" idea as WHATSAPP_TOKEN, so local
+# testing with a plain curl/TestClient POST doesn't need a real Meta app
+# -- but this MUST be set before connecting a real webhook.
+WHATSAPP_APP_SECRET = os.environ.get("WHATSAPP_APP_SECRET", "")
+
+
+def _verify_webhook_signature(raw_body: bytes, signature_header: str) -> bool:
+    if not signature_header or not signature_header.startswith("sha256="):
+        return False
+    expected = hmac.new(WHATSAPP_APP_SECRET.encode(), raw_body, hashlib.sha256).hexdigest()
+    provided = signature_header[len("sha256="):]
+    return hmac.compare_digest(expected, provided)
+
 
 # Statuses where a request is actively moving through the pipeline but
 # isn't the "still awaiting the customer's first reply" case handled
@@ -139,7 +163,12 @@ def whatsapp_webhook_verify(request: Request):
 
 @app.post("/webhook/whatsapp")
 async def whatsapp_webhook(request: Request, db: Session = Depends(get_db)):
-    payload = await request.json()
+    raw_body = await request.body()
+    if WHATSAPP_APP_SECRET:
+        if not _verify_webhook_signature(raw_body, request.headers.get("x-hub-signature-256", "")):
+            raise HTTPException(status_code=403, detail="Invalid webhook signature")
+
+    payload = json.loads(raw_body)
     # Meta's actual shape: entry[0].changes[0].value.messages[0]. The same
     # webhook also delivers delivery/read status callbacks and other event
     # types with no "messages" key — those are acknowledged and ignored.
@@ -153,6 +182,12 @@ async def whatsapp_webhook(request: Request, db: Session = Depends(get_db)):
 
     customer_phone = message["from"]
     message_text = message.get("text", {}).get("body", "")
+
+    # Rate limit BEFORE any DB/Groq work -- the whole point is to cap paid
+    # API calls, so this has to be the first gate, not an afterthought.
+    if not allow_webhook_message(customer_phone):
+        log_action(db, 0, "webhook_rate_limited", "system", {"phone": customer_phone})
+        return {"status": "rate_limited"}
 
     # Check if this customer has an open request awaiting more info
     open_request = (

@@ -171,8 +171,16 @@ Then:
 1. Create a Meta Developer account and a WhatsApp Business app.
 2. Get a test number (free) and a temporary access token.
 3. Set `WHATSAPP_TOKEN`, `WHATSAPP_PHONE_ID`, and `WHATSAPP_VERIFY_TOKEN` (make up any string) in `.env`.
-4. Expose your local server with a tunnel (e.g. `ngrok http 8000`) for testing, or point at a deployed URL.
-5. In the Meta App Dashboard's webhook setup, enter that URL + `/webhook/whatsapp` as the callback URL and the same string as `WHATSAPP_VERIFY_TOKEN` as the verify token, then subscribe to the `messages` field.
+4. Also set `WHATSAPP_APP_SECRET` to the app's "App Secret" (App Dashboard
+   → Settings → Basic — a different value from the token/verify-token
+   above). This is required, not optional, once the webhook URL is public:
+   without it, `main.py` can't verify Meta's `X-Hub-Signature-256` header,
+   which means anyone who finds the URL could POST fabricated "customer
+   messages" straight into the pipeline — each one triggers a paid Groq
+   API call. Left unset, signature checking is skipped entirely (only
+   fine for local testing where nothing calls the webhook but you).
+5. Expose your local server with a tunnel (e.g. `ngrok http 8000`) for testing, or point at a deployed URL.
+6. In the Meta App Dashboard's webhook setup, enter that URL + `/webhook/whatsapp` as the callback URL and the same string as `WHATSAPP_VERIFY_TOKEN` as the verify token, then subscribe to the `messages` field.
 
 ## Deploying (Render)
 
@@ -190,7 +198,7 @@ To deploy:
 1. Connect the repo in Render as a Blueprint (uses `render.yaml` as-is).
 2. Fill in the `sync: false` env vars in the Render dashboard (`DATABASE_URL`,
    `GROQ_API_KEY`, `WHATSAPP_TOKEN`, `WHATSAPP_PHONE_ID`,
-   `WHATSAPP_VERIFY_TOKEN`, `DEFAULT_ADMIN_PASSWORD`) — these aren't stored
+   `WHATSAPP_VERIFY_TOKEN`, `WHATSAPP_APP_SECRET`, `DEFAULT_ADMIN_PASSWORD`) — these aren't stored
    in git. See "Database persistence" below for `DATABASE_URL` specifically
    — without it, all data is lost on the next deploy.
 3. Note that switching an *existing* service from the native Python
@@ -241,6 +249,9 @@ unset, so this is a config change, not a code change:
 - [ ] Review data retention — generated documents contain personal details; decide how long they're kept and who can access them
 - [ ] Confirm the deployed watermark/PDF pipeline end-to-end on Render (approve a real request, check the customer actually gets a watermarked PDF, not a `.docx` fallback)
 - [ ] Get legal sign-off that the diagonal watermark text/placement reads clearly as "not valid for stamping" on an actual printed/viewed page, not just in the source XML
+- [x] Verify the WhatsApp webhook's `X-Hub-Signature-256` header (set `WHATSAPP_APP_SECRET`) so the endpoint isn't open to anyone who finds the URL
+- [x] Rate-limit the webhook (`WEBHOOK_RATE_LIMIT_PER_PHONE` / `WEBHOOK_RATE_LIMIT_GLOBAL`, see `ratelimit.py`) so a bug or abuse can't run up the Groq bill
+- [ ] Resolve Aadhaar handling before collecting it again — `rental_agreement`'s `required_fields` deliberately excludes `landlord_aadhar`/`tenant_aadhar` for now (the document template still has the placeholder; it just renders blank). Get a real answer — ideally legal advice — on consent/storage/retention under India's Aadhaar Act and the DPDP Act 2023 before turning collection back on. In the meantime, Aadhaar details need to be collected offline (in person, at signing).
 
 ## Cost estimate (early-stage volume)
 

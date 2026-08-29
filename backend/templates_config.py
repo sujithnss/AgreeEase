@@ -35,22 +35,31 @@ TEMPLATES = {
         # agreement_duration_months is deliberately absent here (unlike
         # shop_agreement below). See FIXED_DURATION_MONTHS.
         #
-        # Age/address/Aadhar are asked over WhatsApp like everything else
-        # here (customers do state them, and it saves staff from retyping
-        # what the customer already gave) — but the WhatsApp side won't
-        # always get a usable answer (e.g. a tenant may not have the
-        # landlord's Aadhar handy mid-chat), so these stay editable on the
-        # review dashboard as a correction/completion path, same as the
-        # rest of required_fields.
+        # Age/address are asked over WhatsApp like everything else here
+        # (customers do state them, and it saves staff from retyping what
+        # the customer already gave) — but the WhatsApp side won't always
+        # get a usable answer, so these stay editable on the review
+        # dashboard as a correction/completion path, same as the rest of
+        # required_fields.
+        #
+        # Aadhaar numbers are deliberately NOT collected here, even though
+        # the real vendor specimen's document body has a placeholder for
+        # them (templates_docx/rental_agreement_ml.docx: {{ landlord_aadhar }}
+        # / {{ tenant_aadhar }}). Collecting and storing a government ID
+        # number over WhatsApp carries real obligations under India's
+        # Aadhaar Act and the DPDP Act 2023 (consent language, storage/
+        # retention limits, breach handling) that this project hasn't
+        # worked through yet. Until that's resolved, staff should collect
+        # Aadhaar details offline (in person, at signing) rather than
+        # through this system — the placeholder just renders blank
+        # (docxtpl renders a missing context key as empty, not an error).
         "required_fields": [
             "landlord_name",
             "landlord_age",
             "landlord_address",
-            "landlord_aadhar",
             "tenant_name",
             "tenant_age",
             "tenant_address",
-            "tenant_aadhar",
             "property_address",
             "monthly_rent",
             "security_deposit",

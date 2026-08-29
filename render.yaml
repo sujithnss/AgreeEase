@@ -18,6 +18,8 @@ services:
         sync: false
       - key: WHATSAPP_VERIFY_TOKEN
         sync: false
+      - key: WHATSAPP_APP_SECRET
+        sync: false
       - key: SESSION_SECRET
         generateValue: true
       - key: DEFAULT_ADMIN_USERNAME
