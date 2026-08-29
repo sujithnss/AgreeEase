@@ -21,6 +21,8 @@
         .error-banner { background: #fdecea; border: 1px solid #f5c6cb; color: #c0392b; padding: 10px 14px; border-radius: 4px; font-size: 13px; margin-bottom: 15px; }
         input.field-missing { border-color: #c0392b; background: #fdecea; }
         .print-btn { background: #27ae60; }
+        .topbar a.back-btn { background: #1F4E79; color: white; padding: 6px 14px; border-radius: 4px; text-decoration: none; font-size: 13px; margin-left: 0; margin-right: 12px; }
+        .title-row { display: flex; align-items: center; }
     </style>
 </head>
 <body>
@@ -56,10 +58,12 @@
     </div>
     {% endmacro %}
     <div class="topbar">
-        <h1>Review Request #{{ req.id }} &mdash; {{ template_info.label or req.agreement_type }}</h1>
+        <div class="title-row">
+            <a href="/dashboard" class="back-btn">&larr; Back to Dashboard</a>
+            <h1>Review Request #{{ req.id }} &mdash; {{ template_info.label or req.agreement_type }}</h1>
+        </div>
         <div>
             Logged in as <strong>{{ user }}</strong>
-            <a href="/dashboard">All Requests</a>
             <a href="/dashboard/documents">Documents</a>
             <a href="/logout">Log out</a>
             <form method="post" action="/dashboard/{{ req.id }}/delete" style="display:inline" onsubmit="return confirm('Delete request #{{ req.id }}? This removes it from the dashboard (recoverable from the DB, not shown in the UI).');">
