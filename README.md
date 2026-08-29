@@ -305,16 +305,15 @@ matters once real customers are on it:
 
 This repository is **public**, so it's worth catching an accidentally
 committed secret (API key, token) before it's pushed, not after. Two
-layers:
+layers, both confirmed on:
 
 1. **GitHub's native secret scanning + push protection** — free on
-   public repos, but needs a one-time toggle (repo settings aren't
-   something a `git push` can change): go to the repo on GitHub →
-   **Settings → Code security and analysis**, confirm **Secret
-   scanning** is on (usually the default for public repos), and turn on
-   **Push protection** too — that's the part that actively blocks a push
-   containing a recognized secret pattern before it ever lands in
-   history, rather than just alerting afterward.
+   public repos. Confirmed enabled at repo Settings →
+   **Code security and analysis** → **Secret scanning** → **Push
+   protection** ("Block commits that contain supported secrets"). This
+   is the part that actively blocks a push containing a recognized
+   secret pattern before it ever lands in history, rather than just
+   alerting afterward.
 2. **`gitleaks` via GitHub Actions** (`.github/workflows/gitleaks.yml`)
    — runs on every push and pull request and fails the check if it finds
    a likely secret. This is a deliberate second layer: GitHub's native
