@@ -128,13 +128,34 @@ def _add_missing_columns():
     """create_all() only creates tables that don't exist yet — it won't add
     new columns to a table that's already there. This project has no
     migration framework (kept deliberately light, see CLAUDE.md), so for
-    the rare column added after the fact, just patch it in directly.
-    SQLite-only (PRAGMA); a Postgres swap should use a real migration tool
-    instead, so this is skipped on any other dialect."""
-    if engine.dialect.name != "sqlite":
+    each column added after the fact, patch it in directly here instead.
+
+    Handles both SQLite (local dev) and Postgres (Render production —
+    see this module's docstring on why prod uses Postgres, not SQLite).
+    Both need this: a table created before a given column existed doesn't
+    get that column for free just because the SQLAlchemy model was
+    updated later, regardless of which database it is. (An earlier version
+    of this function only handled SQLite, on the assumption Postgres would
+    always get a fresh table with the full current schema — true the first
+    time, but not for any column added after that table already existed.)
+    Any other dialect is left alone; add a real migration tool if this
+    project ever needs one."""
+    dialect = engine.dialect.name
+    if dialect not in ("sqlite", "postgresql"):
         return
     with engine.connect() as conn:
-        existing = {row[1] for row in conn.exec_driver_sql("PRAGMA table_info(agreement_requests)")}
+        if dialect == "sqlite":
+            existing = {row[1] for row in conn.exec_driver_sql("PRAGMA table_info(agreement_requests)")}
+            bool_default_false = "0"
+        else:
+            existing = {
+                row[0] for row in conn.exec_driver_sql(
+                    "SELECT column_name FROM information_schema.columns "
+                    "WHERE table_name = 'agreement_requests'"
+                )
+            }
+            bool_default_false = "FALSE"
+
         if "doc_language" not in existing:
             conn.exec_driver_sql(
                 "ALTER TABLE agreement_requests ADD COLUMN doc_language VARCHAR DEFAULT 'malayalam'"
@@ -142,7 +163,7 @@ def _add_missing_columns():
             conn.commit()
         if "is_deleted" not in existing:
             conn.exec_driver_sql(
-                "ALTER TABLE agreement_requests ADD COLUMN is_deleted BOOLEAN DEFAULT 0"
+                f"ALTER TABLE agreement_requests ADD COLUMN is_deleted BOOLEAN DEFAULT {bool_default_false}"
             )
             conn.commit()
         if "final_pdf_path" not in existing:
