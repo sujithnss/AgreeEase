@@ -18,6 +18,8 @@
         button.del { background: #c0392b; color: white; border: none; padding: 2px 10px; border-radius: 4px; cursor: pointer; font-size: 12px; margin-top: 0; }
         button.del-request { padding: 6px 12px; font-size: 13px; margin-left: 15px; }
         .lang-note { background: #fff3cd; border: 1px solid #f0d98c; color: #7a5b00; padding: 10px 14px; border-radius: 4px; font-size: 13px; margin-top: 10px; }
+        .error-banner { background: #fdecea; border: 1px solid #f5c6cb; color: #c0392b; padding: 10px 14px; border-radius: 4px; font-size: 13px; margin-bottom: 15px; }
+        input.field-missing { border-color: #c0392b; background: #fdecea; }
     </style>
 </head>
 <body>
@@ -65,6 +67,12 @@
 
     <div class="box">
         <h3>Extracted Fields (verify / correct before approving)</h3>
+        {% if missing_staff_fields %}
+        <p class="error-banner">
+            Not approved — these fields aren't collected from the customer over WhatsApp, so they need to be
+            filled in here before a draft can be generated and sent: <strong>{{ missing_staff_fields | join(', ') }}</strong>
+        </p>
+        {% endif %}
         {% if req.doc_language == 'malayalam' %}
         <p class="lang-note">
             Document language is <strong>Malayalam</strong>. Any English-typed name/address fields below will
@@ -88,7 +96,7 @@
             <h4>Additional details (not collected from the customer &mdash; fill in before approving)</h4>
             {% for field in template_info.staff_fields %}
             <label>{{ field }}</label>
-            <input name="{{ field }}" value="{{ req.extracted_fields.get(field, '') }}">
+            <input name="{{ field }}" value="{{ req.extracted_fields.get(field, '') }}" class="{{ 'field-missing' if field in missing_staff_fields else '' }}">
             {% endfor %}
             {% endif %}
 

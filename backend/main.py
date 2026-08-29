@@ -672,6 +672,7 @@ def review_request(request_id: int, request: Request, db: Session = Depends(get_
         raise HTTPException(status_code=404, detail="Request not found")
     template_info = _effective_template_info(req.agreement_type)
     staff_list = [u.username for u in db.query(AdminUser).order_by(AdminUser.username).all()]
+    missing_staff_fields_param = request.query_params.get("missing_staff_fields", "")
     return templates.TemplateResponse(
         request,
         "review.html",
@@ -683,6 +684,7 @@ def review_request(request_id: int, request: Request, db: Session = Depends(get_
             "draft_filename": os.path.basename(req.draft_file_path) if req.draft_file_path else None,
             "draft_pdf_filename": os.path.basename(req.draft_pdf_path) if req.draft_pdf_path else None,
             "final_filename": os.path.basename(req.final_file_path) if req.final_file_path else None,
+            "missing_staff_fields": [f for f in missing_staff_fields_param.split(",") if f],
         },
     )
 
@@ -713,6 +715,24 @@ async def approve_request(
         if field in form:
             updated_fields[field] = form.get(field, "")
     req.extracted_fields = updated_fields
+    # Persist whatever staff typed even if the completeness check below
+    # blocks approval, so a rejected attempt never loses their work.
+    db.commit()
+
+    # staff_fields are never asked over WhatsApp (see templates_config.py) —
+    # staff must fill them in here. Nothing enforced that before, so it was
+    # possible to approve and send a customer a draft with blank Aadhar
+    # numbers or even a blank property description. Block that instead of
+    # just warning, since a sent draft can't be un-sent.
+    missing_staff_fields = [
+        field for field in template_info.get("staff_fields", [])
+        if not str(updated_fields.get(field) or "").strip()
+    ]
+    if missing_staff_fields:
+        return RedirectResponse(
+            url=f"/dashboard/{request_id}?missing_staff_fields={','.join(missing_staff_fields)}",
+            status_code=303,
+        )
 
     doc_language = form.get("doc_language", "malayalam")
     if doc_language not in available_languages_for(req.agreement_type):
