@@ -32,13 +32,13 @@ TEMPLATES = {
         # This template's wording is the vendor's real house license
         # specimen (see templates_docx/rental_agreement_ml.docx docstring),
         # which was originally an 11-month-only document with "11" fixed
-        # in the prose. Customers sometimes ask for 24 or 36 months
-        # instead, so agreement_duration_months is now a normal collected
-        # field (like shop_agreement below) and both .docx templates
-        # reference it via {{ agreement_duration_months }} rather than a
-        # literal "11". FIXED_DURATION_MONTHS still supplies the default
-        # of 11 for the rare case a request predates this field or the
-        # customer never states a duration.
+        # in the prose. Both .docx templates now reference it via
+        # {{ agreement_duration_months }} rather than a literal "11", but
+        # it's deliberately NOT asked of the customer over WhatsApp (see
+        # staff_fields below) -- most agreements really are 11 months, and
+        # asking adds a WhatsApp round-trip for the common case. It's a
+        # staff_field instead: defaults to FIXED_DURATION_MONTHS (11) on
+        # the review dashboard, editable there for the 24/36-month cases.
         #
         # Age/address are asked over WhatsApp like everything else here
         # (customers do state them, and it saves staff from retyping what
@@ -79,12 +79,17 @@ TEMPLATES = {
             "monthly_rent",
             "security_deposit",
             "start_date",
-            "agreement_duration_months",
         ],
-        # Business-side detail no customer would know to state — staff
-        # fill this in on the review dashboard before approving.
+        # Not collected from the customer over WhatsApp — staff fill these
+        # in (or confirm the pre-filled default) on the review dashboard
+        # before approving. agreement_duration_months is pre-filled with
+        # FIXED_DURATION_MONTHS's default (11) on the review page (see
+        # main.py: review_request()'s field_defaults), rather than left
+        # blank like fee_due_day, since most agreements really are 11
+        # months and defaulting saves staff from typing it every time.
         "staff_fields": [
             "fee_due_day",
+            "agreement_duration_months",
         ],
     },
     "shop_agreement": {

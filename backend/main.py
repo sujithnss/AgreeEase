@@ -754,12 +754,21 @@ def review_request(request_id: int, request: Request, db: Session = Depends(get_
     template_info = _effective_template_info(req.agreement_type)
     staff_list = [u.username for u in db.query(AdminUser).order_by(AdminUser.username).all()]
     incomplete_fields_param = request.query_params.get("incomplete_fields", "")
+    # Pre-fills the review form's agreement_duration_months input with the
+    # template's default (11) so staff aren't forced to type it in on every
+    # request — they can still edit it before approving. Not written onto
+    # req.extracted_fields itself so an un-submitted review page never
+    # silently persists a value nobody confirmed.
+    field_defaults = {
+        "agreement_duration_months": duration_months_for(req.agreement_type, req.extracted_fields or {}),
+    }
     return templates.TemplateResponse(
         request,
         "review.html",
         {
             "req": req,
             "template_info": template_info,
+            "field_defaults": field_defaults,
             "user": get_current_user(request),
             "staff_list": staff_list,
             "draft_filename": os.path.basename(req.draft_file_path) if req.draft_file_path else None,
