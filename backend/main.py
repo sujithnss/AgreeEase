@@ -45,7 +45,7 @@ from extraction import (
     build_property_description,
 )
 from docgen import generate_document, convert_to_pdf
-from templates_config import TEMPLATES, available_languages_for, required_fields_for, duration_months_for, DEFAULT_FEE_DUE_DAY
+from templates_config import TEMPLATES, available_languages_for, required_fields_for, duration_months_for, DEFAULT_FEE_DUE_DAY, DEFAULT_RENEWAL_FEE_INCREASE_TERMS
 from whatsapp import send_whatsapp_message
 from ratelimit import allow_webhook_message
 from dateutils import calculate_agreement_end_date
@@ -763,6 +763,7 @@ def review_request(request_id: int, request: Request, db: Session = Depends(get_
     field_defaults = {
         "agreement_duration_months": duration_months_for(req.agreement_type, req.extracted_fields or {}),
         "fee_due_day": DEFAULT_FEE_DUE_DAY,
+        "renewal_fee_increase_terms": DEFAULT_RENEWAL_FEE_INCREASE_TERMS,
     }
     return templates.TemplateResponse(
         request,

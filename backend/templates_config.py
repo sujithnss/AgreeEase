@@ -97,14 +97,22 @@ TEMPLATES = {
         ],
         # Not collected from the customer over WhatsApp — staff fill these
         # in (or confirm the pre-filled default) on the review dashboard
-        # before approving. Both are pre-filled with sensible defaults on
+        # before approving. All are pre-filled with sensible defaults on
         # the review page (see main.py: review_request()'s field_defaults
         # — FIXED_DURATION_MONTHS for duration, DEFAULT_FEE_DUE_DAY for
-        # fee_due_day) since most agreements use the common case and
-        # defaulting saves staff from typing it every time.
+        # fee_due_day, DEFAULT_RENEWAL_FEE_INCREASE_TERMS for
+        # renewal_fee_increase_terms) since most agreements use the common
+        # case and defaulting saves staff from typing it every time.
         "staff_fields": [
             "fee_due_day",
             "agreement_duration_months",
+            # Clause (13)'s renewal wording — "കാലാനുസൃതമായ [ലൈസൻസ് ഫീസ്
+            # വർദ്ധനവ്]" ("a customary/prevailing-rate [license fee
+            # increase]" on renewal). Defaults to that same wording so the
+            # clause reads exactly as the vendor specimen originally did,
+            # but staff can override it with a specific rate/term per
+            # agreement (e.g. "10%").
+            "renewal_fee_increase_terms",
         ],
     },
     "shop_agreement": {
@@ -197,3 +205,11 @@ def duration_months_for(agreement_type: str, fields: dict):
 # review_request()'s field_defaults) since most agreements use the 5th —
 # staff edit it there when a request needs a different day.
 DEFAULT_FEE_DUE_DAY = 5
+
+# Default wording for clause (13)'s renewal_fee_increase_terms staff_field
+# — the vendor specimen's original phrase describing the license fee
+# increase on renewal ("a customary/prevailing-rate [fee increase]").
+# Pre-filled on the review dashboard so the clause reads exactly as it did
+# before this became an editable field; staff override it with a specific
+# rate/term (e.g. "10%") when an agreement needs one.
+DEFAULT_RENEWAL_FEE_INCREASE_TERMS = "കാലാനുസൃതമായ"
