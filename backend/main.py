@@ -42,6 +42,7 @@ from extraction import (
     renewal_reminder_message,
     resolve_doc_language,
     transliterate_fields_to_malayalam,
+    translate_property_description_to_malayalam,
 )
 from docgen import generate_document, convert_to_pdf
 from templates_config import TEMPLATES, available_languages_for, required_fields_for, duration_months_for
@@ -841,6 +842,19 @@ async def approve_request(
         req.extracted_fields = transliterated
         if changed_fields:
             log_action(db, request_id, "fields_transliterated", staff_name, {"fields": changed_fields})
+
+        # property_description is excluded from the transliteration above
+        # (see that function's docstring) since it's structural English
+        # prose, not a proper noun -- it needs real translation instead.
+        property_description = req.extracted_fields.get("property_description")
+        if property_description:
+            translated_description = translate_property_description_to_malayalam(property_description)
+            if translated_description != property_description:
+                req.extracted_fields = {
+                    **req.extracted_fields,
+                    "property_description": translated_description,
+                }
+                log_action(db, request_id, "property_description_translated", staff_name, {})
 
     req.status = "approved"
     req.reviewed_by = staff_name

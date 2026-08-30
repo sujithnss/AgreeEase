@@ -343,11 +343,17 @@ def transliterate_fields_to_malayalam(fields: dict) -> dict:
     letters (already Malayalam, or purely numeric/date fields) are left
     untouched and never sent to the API. Falls back to the original
     fields unchanged if the API call or parsing fails, so a
-    transliteration hiccup never blocks document generation."""
+    transliteration hiccup never blocks document generation.
+
+    property_description is deliberately excluded here -- unlike a proper
+    noun, a phrase like "House bearing No. 5/25, situated in Ramanattukara
+    Municipality, Kozhikode District" reads as nonsense if merely sounded
+    out in Malayalam script. It needs actual translation instead -- see
+    translate_property_description_to_malayalam() below."""
     candidates = {
         key: value
         for key, value in fields.items()
-        if key != PREFERRED_LANGUAGE_FIELD
+        if key not in (PREFERRED_LANGUAGE_FIELD, "property_description")
         and isinstance(value, str)
         and _LATIN_LETTERS_RE.search(value)
     }
@@ -372,3 +378,38 @@ def transliterate_fields_to_malayalam(fields: dict) -> dict:
         if value:
             merged[key] = value
     return merged
+
+
+PROPERTY_DESCRIPTION_TRANSLATION_SYSTEM_PROMPT = """You translate a
+property's legal/land-record description for a Kerala rental agreement
+into natural Malayalam, in the style of a real Malayalam rental agreement
+(the kind of phrasing used for a "മാർജിൻ" / property description clause).
+
+Unlike a person's name, this text is NOT just proper nouns -- structural
+English words and phrases ("House bearing No.", "situated in",
+"Municipality", "Village", "Taluk", "District", "bounded by", etc.) MUST
+be translated to their actual Malayalam equivalents, not sounded out
+phonetically. Place names, street names, and other proper nouns (e.g.
+"Ramanattukara", "Kozhikode") should be transliterated into Malayalam
+script the way they are commonly written in Malayalam. Keep survey/door
+numbers and any other digits exactly as given.
+
+If the input is already in Malayalam, return it unchanged. Respond with
+ONLY the translated text, nothing else -- no quotes, no explanation."""
+
+
+def translate_property_description_to_malayalam(text: str) -> str:
+    """Translates (by meaning, not phonetically) a property's legal
+    description for the Malayalam template -- see the note on
+    transliterate_fields_to_malayalam() above for why this field can't
+    just go through that function. Falls back to the original text
+    unchanged if the API call fails, so a translation hiccup never
+    blocks document generation."""
+    if not text or not _LATIN_LETTERS_RE.search(text):
+        return text
+    try:
+        raw = _chat(PROPERTY_DESCRIPTION_TRANSLATION_SYSTEM_PROMPT, text, max_tokens=500)
+    except requests.exceptions.RequestException as e:
+        print(f"[Property description translation ERROR] Falling back to original text: {e}")
+        return text
+    return raw.strip().strip('"')
