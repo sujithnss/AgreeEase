@@ -145,7 +145,7 @@
             <h4>Optional details <span class="optional-tag">(only included in the document if filled in)</span></h4>
             {% for field in template_info.optional_fields %}
             <label>{{ field }}</label>
-            <input name="{{ field }}" value="{{ req.extracted_fields.get(field, '') }}">
+            <input name="{{ field }}" value="{{ req.extracted_fields.get(field) or '' }}">
             {% endfor %}
             {% endif %}
 
