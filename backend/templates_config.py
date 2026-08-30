@@ -82,11 +82,11 @@ TEMPLATES = {
         ],
         # Not collected from the customer over WhatsApp — staff fill these
         # in (or confirm the pre-filled default) on the review dashboard
-        # before approving. agreement_duration_months is pre-filled with
-        # FIXED_DURATION_MONTHS's default (11) on the review page (see
-        # main.py: review_request()'s field_defaults), rather than left
-        # blank like fee_due_day, since most agreements really are 11
-        # months and defaulting saves staff from typing it every time.
+        # before approving. Both are pre-filled with sensible defaults on
+        # the review page (see main.py: review_request()'s field_defaults
+        # — FIXED_DURATION_MONTHS for duration, DEFAULT_FEE_DUE_DAY for
+        # fee_due_day) since most agreements use the common case and
+        # defaulting saves staff from typing it every time.
         "staff_fields": [
             "fee_due_day",
             "agreement_duration_months",
@@ -162,3 +162,10 @@ def duration_months_for(agreement_type: str, fields: dict):
     if value:
         return value
     return FIXED_DURATION_MONTHS.get(agreement_type)
+
+
+# Default day-of-month rent is due, pre-filled on the review dashboard for
+# the rental_agreement fee_due_day staff_field (see main.py:
+# review_request()'s field_defaults) since most agreements use the 5th —
+# staff edit it there when a request needs a different day.
+DEFAULT_FEE_DUE_DAY = 5

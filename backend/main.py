@@ -45,7 +45,7 @@ from extraction import (
     build_property_description,
 )
 from docgen import generate_document, convert_to_pdf
-from templates_config import TEMPLATES, available_languages_for, required_fields_for, duration_months_for
+from templates_config import TEMPLATES, available_languages_for, required_fields_for, duration_months_for, DEFAULT_FEE_DUE_DAY
 from whatsapp import send_whatsapp_message
 from ratelimit import allow_webhook_message
 from dateutils import calculate_agreement_end_date
@@ -754,13 +754,15 @@ def review_request(request_id: int, request: Request, db: Session = Depends(get_
     template_info = _effective_template_info(req.agreement_type)
     staff_list = [u.username for u in db.query(AdminUser).order_by(AdminUser.username).all()]
     incomplete_fields_param = request.query_params.get("incomplete_fields", "")
-    # Pre-fills the review form's agreement_duration_months input with the
-    # template's default (11) so staff aren't forced to type it in on every
-    # request — they can still edit it before approving. Not written onto
-    # req.extracted_fields itself so an un-submitted review page never
-    # silently persists a value nobody confirmed.
+    # Pre-fills review-form inputs for fields with a sensible default (most
+    # rental agreements run 11 months and charge rent on the 5th) so staff
+    # aren't forced to retype them on every request — they can still edit
+    # before approving. Not written onto req.extracted_fields itself so an
+    # un-submitted review page never silently persists a value nobody
+    # confirmed.
     field_defaults = {
         "agreement_duration_months": duration_months_for(req.agreement_type, req.extracted_fields or {}),
+        "fee_due_day": DEFAULT_FEE_DUE_DAY,
     }
     return templates.TemplateResponse(
         request,
