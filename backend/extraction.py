@@ -106,11 +106,11 @@ that part as asking whether they'd like the final agreement DOCUMENT
 drafted in English or Malayalam — make clear this is about the document
 itself, not the language they're chatting in.
 
-If "property_description" is one of the missing fields, phrase that part
-as asking for the property's full legal/land-record description — taluk,
-village, survey/door number, and any boundary details, the kind of thing
-written on a tax receipt or a previous agreement for the property — not
-just the street address they may have already given.
+If "property_address" is one of the missing fields, phrase that part as
+asking for the full property address including the door/building
+number and the Municipality/Panchayat/Corporation name, not just the
+locality — this is used to generate the agreement's formal property
+description, so a complete address matters more than usual.
 
 If "agreement_duration_months" is one of the missing fields, phrase that
 part as asking how many months the agreement should run for (most are
@@ -350,15 +350,14 @@ def transliterate_fields_to_malayalam(fields: dict) -> dict:
     fields unchanged if the API call or parsing fails, so a
     transliteration hiccup never blocks document generation.
 
-    property_description is deliberately excluded here -- unlike a proper
-    noun, a phrase like "House bearing No. 5/25, situated in Ramanattukara
-    Municipality, Kozhikode District" reads as nonsense if merely sounded
-    out in Malayalam script. It needs actual translation instead -- see
-    translate_property_description_to_malayalam() below."""
+    Called after build_property_description() has already written a
+    Malayalam-script property_description onto the fields dict (see
+    approve_request() in main.py) -- that field is naturally skipped
+    here too, since it has no Latin letters left to transliterate."""
     candidates = {
         key: value
         for key, value in fields.items()
-        if key not in (PREFERRED_LANGUAGE_FIELD, "property_description")
+        if key != PREFERRED_LANGUAGE_FIELD
         and isinstance(value, str)
         and _LATIN_LETTERS_RE.search(value)
     }
@@ -385,36 +384,54 @@ def transliterate_fields_to_malayalam(fields: dict) -> dict:
     return merged
 
 
-PROPERTY_DESCRIPTION_TRANSLATION_SYSTEM_PROMPT = """You translate a
-property's legal/land-record description for a Kerala rental agreement
-into natural Malayalam, in the style of a real Malayalam rental agreement
-(the kind of phrasing used for a "മാർജിൻ" / property description clause).
+PROPERTY_DESCRIPTION_SYSTEM_PROMPT = """You write the formal property
+description clause for a Kerala rental/license agreement -- the
+"മാർജിൻ" schedule clause in the vendor's Malayalam specimen -- from a
+customer's plain-language property address.
 
-Unlike a person's name, this text is NOT just proper nouns -- structural
-English words and phrases ("House bearing No.", "situated in",
-"Municipality", "Village", "Taluk", "District", "bounded by", etc.) MUST
-be translated to their actual Malayalam equivalents, not sounded out
-phonetically. Place names, street names, and other proper nouns (e.g.
-"Ramanattukara", "Kozhikode") should be transliterated into Malayalam
-script the way they are commonly written in Malayalam. Keep survey/door
-numbers and any other digits exactly as given.
+From the address, identify whatever you can of: door/building number,
+the local body name and type (Municipality, Corporation, or
+Panchayat), and the District. Do NOT invent or guess anything not
+present or clearly implied in the address -- just omit a piece you
+can't identify rather than making it up.
 
-If the input is already in Malayalam, return it unchanged. Respond with
-ONLY the translated text, nothing else -- no quotes, no explanation."""
+Write ONE sentence in the requested target language, following this
+pattern (adapt it to whatever pieces are actually available):
+
+Malayalam example (for door no. 6/83, Ramanattukara Municipality,
+Kozhikode District):
+"കോഴിക്കോട് ജില്ലയിൽ രാമനാട്ടുകര മുനിസിപ്പാലിറ്റിയിൽ സ്ഥിതി ചെയ്യുന്നതും
+6/83 എന്ന നമ്പറിട്ടതുമായ വീട്."
+
+English example (same address):
+"House bearing No. 6/83, situated in Ramanattukara Municipality,
+Kozhikode District."
+
+Place/local-body names should be transliterated into Malayalam script
+the way they are commonly written in Malayalam when the target
+language is Malayalam. Keep door/survey numbers and any other digits
+exactly as given.
+
+Respond with ONLY the finished sentence in the requested target
+language and script -- nothing else, no explanation, no quotes."""
 
 
-def translate_property_description_to_malayalam(text: str) -> str:
-    """Translates (by meaning, not phonetically) a property's legal
-    description for the Malayalam template -- see the note on
-    transliterate_fields_to_malayalam() above for why this field can't
-    just go through that function. Falls back to the original text
-    unchanged if the API call fails, so a translation hiccup never
-    blocks document generation."""
-    if not text or not _LATIN_LETTERS_RE.search(text):
-        return text
+def build_property_description(property_address: str, language: str) -> str:
+    """Builds the formal property-description clause (the vendor
+    specimen's "മാർജിൻ" schedule text) from the customer's plain-language
+    property_address, directly in the document's target language --
+    so customers only need to give one normal address over WhatsApp
+    instead of a separate land-record-style description they're
+    unlikely to have on hand (door no., local body, district). Falls
+    back to the raw address unchanged if the API call fails, so a
+    generation hiccup never blocks document generation."""
+    if not property_address:
+        return property_address
+    target_language = "Malayalam" if language == "malayalam" else "English"
+    prompt = f'Target language: {target_language}\nProperty address: "{property_address}"'
     try:
-        raw = _chat(PROPERTY_DESCRIPTION_TRANSLATION_SYSTEM_PROMPT, text, max_tokens=500)
+        raw = _chat(PROPERTY_DESCRIPTION_SYSTEM_PROMPT, prompt, max_tokens=300)
     except requests.exceptions.RequestException as e:
-        print(f"[Property description translation ERROR] Falling back to original text: {e}")
-        return text
+        print(f"[Property description generation ERROR] Falling back to raw address: {e}")
+        return property_address
     return raw.strip().strip('"')

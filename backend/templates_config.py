@@ -65,17 +65,17 @@ TEMPLATES = {
             "tenant_name",
             "tenant_age",
             "tenant_address",
+            # property_description (the formal "മാർജിൻ" schedule clause —
+            # door no., local body, district) is NOT collected separately
+            # here — customers on WhatsApp rarely have that land-record-
+            # style detail on hand. Instead it's generated automatically
+            # from this address at approval time — see
+            # extraction.build_property_description() and its call site
+            # in main.py's approve_request(). Make sure a door/building
+            # number and municipality/panchayat are asked for as part of
+            # this field's follow-up question (see FOLLOWUP_SYSTEM_PROMPT
+            # in extraction.py) so there's enough to work with.
             "property_address",
-            # The precise legal description of the property (taluk/village/
-            # door no./etc.), written as one flowing sentence, matching how
-            # the real specimen writes its "മാർജിൻ" clause — not broken into
-            # separate district/taluk/village fields. Asked over WhatsApp
-            # like the rest of required_fields (customers who've rented
-            # before often do know this, e.g. from a prior document or tax
-            # receipt) — same completion path as everything else here:
-            # if the WhatsApp answer isn't usable, staff correct/fill it in
-            # on the review dashboard.
-            "property_description",
             "monthly_rent",
             "security_deposit",
             "start_date",

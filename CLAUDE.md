@@ -90,14 +90,20 @@ in the app needs to change.
 - `templates_docx/rental_agreement_ml.docx` — the vendor's real specimen
   ("Rent Agreement House With/Without Data") verbatim, with the customer/
   staff-supplied spans swapped for `{{ jinja }}` placeholders in place —
-  wording, paragraph numbering, spacing, and hyphenation untouched. It's
-  specifically an **11-month house license** format: the duration is fixed
-  prose in the document, not a field (see `FIXED_DURATION_MONTHS` in
-  `templates_config.py`), and the property's precise legal description
-  (taluk/village/door no./etc.) is one free-text `property_description`
-  field rather than separate structured fields, matching how the specimen
-  writes its "മാർജിൻ" clause. `shop_agreement.docx` is still illustrative
-  English-only wording and has no Malayalam variant yet.
+  wording, paragraph numbering, spacing, and hyphenation untouched. It
+  was originally an **11-month-only house license** format with "11"
+  fixed in the prose; duration is now a normal `agreement_duration_months`
+  field (customers can ask for 24, 36, etc.), defaulting to 11 via
+  `FIXED_DURATION_MONTHS` in `templates_config.py` when unstated. The
+  property's precise legal description (the "മാർജിൻ" schedule clause —
+  door no., local body, district) is NOT collected from the customer as
+  its own field — customers rarely have that land-record-style detail on
+  WhatsApp. Instead `property_description` is generated automatically
+  from the customer's plain `property_address` at approval time, in the
+  document's language, via `extraction.build_property_description()`
+  (see its call site in `main.py: approve_request()`). `shop_agreement.docx`
+  is still illustrative English-only wording and has no Malayalam variant
+  yet.
 - `main.py: whatsapp_webhook()` — payload parsing is simplified for the
   now. Adjust to Meta's actual webhook JSON shape once a live number is
   connected.

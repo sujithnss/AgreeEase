@@ -42,7 +42,7 @@ from extraction import (
     renewal_reminder_message,
     resolve_doc_language,
     transliterate_fields_to_malayalam,
-    translate_property_description_to_malayalam,
+    build_property_description,
 )
 from docgen import generate_document, convert_to_pdf
 from templates_config import TEMPLATES, available_languages_for, required_fields_for, duration_months_for
@@ -826,13 +826,28 @@ async def approve_request(
         doc_language = "malayalam"
     req.doc_language = doc_language
 
-    # Auto-transliterate any English-typed name/address fields into
-    # Malayalam script so the generated document doesn't mix Malayalam
-    # boilerplate with English proper nouns. Done once here (rather than
+    # Build the formal "മാർജിൻ" schedule-clause property description
+    # directly from the customer's plain-language property_address, in
+    # the document's language -- customers don't collect this field
+    # themselves (see templates_config.py). Done here (rather than
     # inside docgen.py) so the draft and final copy always use the exact
-    # same spelling — it's persisted onto the request, not re-derived per
-    # document. Fields already in Malayalam, or with no Latin letters
-    # (dates, amounts), are left untouched.
+    # same wording -- it's persisted onto the request, not re-derived
+    # per document.
+    property_address = req.extracted_fields.get("property_address")
+    if property_address:
+        property_description = build_property_description(property_address, doc_language)
+        if property_description != req.extracted_fields.get("property_description"):
+            req.extracted_fields = {
+                **req.extracted_fields,
+                "property_description": property_description,
+            }
+            log_action(db, request_id, "property_description_generated", staff_name, {"language": doc_language})
+
+    # Auto-transliterate any remaining English-typed name/address fields
+    # into Malayalam script so the generated document doesn't mix
+    # Malayalam boilerplate with English proper nouns. Fields already in
+    # Malayalam (including the property_description just built above),
+    # or with no Latin letters (dates, amounts), are left untouched.
     if doc_language == "malayalam":
         transliterated = transliterate_fields_to_malayalam(req.extracted_fields)
         changed_fields = [
@@ -842,19 +857,6 @@ async def approve_request(
         req.extracted_fields = transliterated
         if changed_fields:
             log_action(db, request_id, "fields_transliterated", staff_name, {"fields": changed_fields})
-
-        # property_description is excluded from the transliteration above
-        # (see that function's docstring) since it's structural English
-        # prose, not a proper noun -- it needs real translation instead.
-        property_description = req.extracted_fields.get("property_description")
-        if property_description:
-            translated_description = translate_property_description_to_malayalam(property_description)
-            if translated_description != property_description:
-                req.extracted_fields = {
-                    **req.extracted_fields,
-                    "property_description": translated_description,
-                }
-                log_action(db, request_id, "property_description_translated", staff_name, {})
 
     req.status = "approved"
     req.reviewed_by = staff_name
