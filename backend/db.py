@@ -29,7 +29,20 @@ if SQLALCHEMY_DATABASE_URL.startswith("postgres://"):
 # raises an error, so only apply it when actually running on SQLite.
 _connect_args = {"check_same_thread": False} if SQLALCHEMY_DATABASE_URL.startswith("sqlite") else {}
 
-engine = create_engine(SQLALCHEMY_DATABASE_URL, connect_args=_connect_args)
+# pool_pre_ping tests each connection with a lightweight SELECT before
+# handing it out, transparently reconnecting if it's gone stale -- hosted
+# Postgres providers (Supabase/Neon/Render) close idle server-side
+# connections after a few minutes, which otherwise surfaces as
+# "SSL connection has been closed unexpectedly" on whatever request
+# happens to reuse that dead pooled connection next. pool_recycle forces
+# a periodic refresh too, belt-and-suspenders against the same class of
+# issue. Harmless no-ops on SQLite.
+engine = create_engine(
+    SQLALCHEMY_DATABASE_URL,
+    connect_args=_connect_args,
+    pool_pre_ping=True,
+    pool_recycle=300,
+)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 
