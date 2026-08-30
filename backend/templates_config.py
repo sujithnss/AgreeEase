@@ -61,19 +61,24 @@ TEMPLATES = {
             "tenant_age",
             "tenant_address",
             "property_address",
+            # The precise legal description of the property (taluk/village/
+            # door no./etc.), written as one flowing sentence, matching how
+            # the real specimen writes its "മാർജിൻ" clause — not broken into
+            # separate district/taluk/village fields. Asked over WhatsApp
+            # like the rest of required_fields (customers who've rented
+            # before often do know this, e.g. from a prior document or tax
+            # receipt) — same completion path as everything else here:
+            # if the WhatsApp answer isn't usable, staff correct/fill it in
+            # on the review dashboard.
+            "property_description",
             "monthly_rent",
             "security_deposit",
             "start_date",
         ],
-        # Land-record-level detail a casual WhatsApp message won't include —
-        # staff fill these in on the review dashboard before approving.
-        # property_description is the precise legal description of the
-        # property (taluk/village/door no./etc.) written as one flowing
-        # sentence, matching how the real specimen writes its "മാർജിൻ"
-        # clause — not broken into separate district/taluk/village fields.
+        # Business-side detail no customer would know to state — staff
+        # fill this in on the review dashboard before approving.
         "staff_fields": [
             "fee_due_day",
-            "property_description",
         ],
     },
     "shop_agreement": {

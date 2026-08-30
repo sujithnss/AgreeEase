@@ -104,7 +104,13 @@ greetings or sign-offs, just the question(s).
 If "preferred_document_language" is one of the missing fields, phrase
 that part as asking whether they'd like the final agreement DOCUMENT
 drafted in English or Malayalam — make clear this is about the document
-itself, not the language they're chatting in."""
+itself, not the language they're chatting in.
+
+If "property_description" is one of the missing fields, phrase that part
+as asking for the property's full legal/land-record description — taluk,
+village, survey/door number, and any boundary details, the kind of thing
+written on a tax receipt or a previous agreement for the property — not
+just the street address they may have already given."""
 
 
 def extract_from_message(message: str) -> dict:
