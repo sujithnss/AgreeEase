@@ -110,7 +110,12 @@ If "property_description" is one of the missing fields, phrase that part
 as asking for the property's full legal/land-record description — taluk,
 village, survey/door number, and any boundary details, the kind of thing
 written on a tax receipt or a previous agreement for the property — not
-just the street address they may have already given."""
+just the street address they may have already given.
+
+If "agreement_duration_months" is one of the missing fields, phrase that
+part as asking how many months the agreement should run for (most are
+11 months, but 24 or 36 month agreements are also common) — make clear
+they should reply with a number of months."""
 
 
 def extract_from_message(message: str) -> dict:

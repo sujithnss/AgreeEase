@@ -150,11 +150,15 @@ def generate_document(
     # kept as an empty string rather than removed so existing templates
     # with a {{ watermark_text }} placeholder still render (as a blank line).
     context["watermark_text"] = ""
-    fields_with_duration = {
-        **fields,
-        "agreement_duration_months": duration_months_for(agreement_type, fields),
-    }
-    end_date = calculate_agreement_end_date(fields_with_duration)
+    # Resolves to whatever the customer/staff supplied, falling back to
+    # the template's default (see FIXED_DURATION_MONTHS) -- covers both
+    # older requests made before this was a collected field and the case
+    # where the customer never stated a duration. Both templates render
+    # this via {{ agreement_duration_months }} rather than a fixed number,
+    # so a customer asking for 24 or 36 months instead of the traditional
+    # 11 doesn't need a different template.
+    context["agreement_duration_months"] = duration_months_for(agreement_type, fields)
+    end_date = calculate_agreement_end_date(context)
     context["end_date"] = end_date.strftime("%d-%m-%Y") if end_date else ""
 
     # Malayalam word-form context, for templates (like rental_agreement_ml)
@@ -177,6 +181,12 @@ def generate_document(
         )
     except (ValueError, TypeError):
         context["security_deposit_words"] = ""
+    try:
+        context["agreement_duration_months_words_ml"] = number_to_malayalam_words(
+            int(context["agreement_duration_months"])
+        )
+    except (ValueError, TypeError):
+        context["agreement_duration_months_words_ml"] = ""
 
     doc.render(context)
 

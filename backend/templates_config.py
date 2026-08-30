@@ -29,11 +29,16 @@ TEMPLATES = {
             "malayalam": "templates_docx/rental_agreement_ml.docx",
             "english": "templates_docx/rental_agreement_en.docx",
         },
-        # This template's wording is the vendor's real 11-month house
-        # license specimen verbatim (see templates_docx/rental_agreement_ml.docx
-        # docstring) — the duration is fixed prose, not a field, so
-        # agreement_duration_months is deliberately absent here (unlike
-        # shop_agreement below). See FIXED_DURATION_MONTHS.
+        # This template's wording is the vendor's real house license
+        # specimen (see templates_docx/rental_agreement_ml.docx docstring),
+        # which was originally an 11-month-only document with "11" fixed
+        # in the prose. Customers sometimes ask for 24 or 36 months
+        # instead, so agreement_duration_months is now a normal collected
+        # field (like shop_agreement below) and both .docx templates
+        # reference it via {{ agreement_duration_months }} rather than a
+        # literal "11". FIXED_DURATION_MONTHS still supplies the default
+        # of 11 for the rare case a request predates this field or the
+        # customer never states a duration.
         #
         # Age/address are asked over WhatsApp like everything else here
         # (customers do state them, and it saves staff from retyping what
@@ -74,6 +79,7 @@ TEMPLATES = {
             "monthly_rent",
             "security_deposit",
             "start_date",
+            "agreement_duration_months",
         ],
         # Business-side detail no customer would know to state — staff
         # fill this in on the review dashboard before approving.
@@ -132,18 +138,21 @@ def available_languages_for(agreement_type: str) -> list:
     return list(t["files"].keys()) if t else []
 
 
-# Templates whose wording fixes the agreement duration in prose (so it's
-# not a customer/staff-editable field — see rental_agreement above).
+# Default duration per agreement type, used when a request has no
+# agreement_duration_months value -- either because the customer never
+# stated one (11 months is the traditional default for this business) or
+# because the request predates agreement_duration_months becoming a
+# collected field for rental_agreement.
 FIXED_DURATION_MONTHS = {
     "rental_agreement": 11,
 }
 
 
 def duration_months_for(agreement_type: str, fields: dict):
-    """Resolves the agreement duration in months for end-date calculations
-    (see dateutils.calculate_agreement_end_date): whatever value is present
-    in the fields dict, falling back to a template's fixed duration for
-    templates like rental_agreement that don't collect the field at all."""
+    """Resolves the agreement duration in months, for both end-date
+    calculations (see dateutils.calculate_agreement_end_date) and the
+    document body itself: whatever value is present in the fields dict,
+    falling back to the template's default duration otherwise."""
     value = fields.get("agreement_duration_months")
     if value:
         return value
