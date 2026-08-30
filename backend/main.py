@@ -48,7 +48,7 @@ from docgen import generate_document, convert_to_pdf
 from templates_config import TEMPLATES, available_languages_for, required_fields_for, duration_months_for, DEFAULT_FEE_DUE_DAY, DEFAULT_RENEWAL_FEE_INCREASE_TERMS
 from whatsapp import send_whatsapp_message
 from ratelimit import allow_webhook_message
-from dateutils import calculate_agreement_end_date
+from dateutils import calculate_agreement_end_date, start_date_looks_stale
 from auth import hash_password, verify_password, require_login, get_current_user, ensure_default_admin
 
 app = FastAPI(title="AgreeEase")
@@ -765,6 +765,20 @@ def review_request(request_id: int, request: Request, db: Session = Depends(get_
         "fee_due_day": DEFAULT_FEE_DUE_DAY,
         "renewal_fee_increase_terms": DEFAULT_RENEWAL_FEE_INCREASE_TERMS,
     }
+    # Advisory-only check, not a blocker: if start_date + the agreement's
+    # duration computes an end date more than a grace period in the past
+    # (see dateutils.START_DATE_GRACE_MONTHS), the customer likely
+    # mistyped start_date's year (e.g. "2024" instead of "2026") rather
+    # than genuinely backdating a recent agreement -- a start_date a few
+    # months back, still within (or just past) the duration, is normal
+    # and intentionally NOT flagged. Staff can confirm it's correct and
+    # approve anyway.
+    fields_with_duration = {
+        **(req.extracted_fields or {}),
+        "agreement_duration_months": field_defaults["agreement_duration_months"],
+    }
+    computed_end_date = calculate_agreement_end_date(fields_with_duration)
+    stale_start_date = start_date_looks_stale(fields_with_duration)
     return templates.TemplateResponse(
         request,
         "review.html",
@@ -779,6 +793,8 @@ def review_request(request_id: int, request: Request, db: Session = Depends(get_
             "final_filename": os.path.basename(req.final_file_path) if req.final_file_path else None,
             "final_pdf_filename": os.path.basename(req.final_pdf_path) if req.final_pdf_path else None,
             "incomplete_fields": [f for f in incomplete_fields_param.split(",") if f],
+            "start_date_looks_stale": stale_start_date,
+            "computed_end_date": computed_end_date.strftime("%d-%m-%Y") if computed_end_date else "",
         },
     )
 

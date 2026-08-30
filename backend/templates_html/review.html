@@ -20,6 +20,8 @@
         .lang-note { background: #fff3cd; border: 1px solid #f0d98c; color: #7a5b00; padding: 10px 14px; border-radius: 4px; font-size: 13px; margin-top: 10px; }
         .error-banner { background: #fdecea; border: 1px solid #f5c6cb; color: #c0392b; padding: 10px 14px; border-radius: 4px; font-size: 13px; margin-bottom: 15px; }
         input.field-missing { border-color: #c0392b; background: #fdecea; }
+        input.field-warning { border-color: #e67e22; background: #fff8ec; }
+        p.warning { color: #a3610a; font-size: 13px; }
         .optional-tag { font-weight: normal; color: #888; font-size: 12px; }
         .print-btn { background: #27ae60; }
         .topbar a.back-btn { background: #1F4E79; color: white; padding: 6px 14px; border-radius: 4px; text-decoration: none; font-size: 13px; margin-left: 0; margin-right: 12px; }
@@ -134,7 +136,10 @@
         <form method="post" action="/dashboard/{{ req.id }}/approve" onsubmit="document.getElementById('approve-btn').disabled=true; document.getElementById('approve-btn').textContent='Generating draft — please wait, this can take up to 30s…';">
             {% for field in template_info.required_fields %}
             <label>{{ field }}</label>
-            <input name="{{ field }}" value="{{ req.extracted_fields.get(field) or field_defaults.get(field, '') }}" class="{{ 'field-missing' if field in incomplete_fields else '' }}">
+            <input name="{{ field }}" value="{{ req.extracted_fields.get(field) or field_defaults.get(field, '') }}" class="{{ 'field-missing' if field in incomplete_fields else ('field-warning' if field == 'start_date' and start_date_looks_stale else '') }}">
+            {% if field == 'start_date' and start_date_looks_stale %}
+            <p class="warning">⚠ With this start date, the agreement would already have ended on {{ computed_end_date }} — check the year with the customer before approving (they may still confirm it's correct, e.g. a genuinely backdated agreement).</p>
+            {% endif %}
             {% endfor %}
 
             {% if req.missing_fields %}
