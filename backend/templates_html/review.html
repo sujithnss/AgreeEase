@@ -20,6 +20,7 @@
         .lang-note { background: #fff3cd; border: 1px solid #f0d98c; color: #7a5b00; padding: 10px 14px; border-radius: 4px; font-size: 13px; margin-top: 10px; }
         .error-banner { background: #fdecea; border: 1px solid #f5c6cb; color: #c0392b; padding: 10px 14px; border-radius: 4px; font-size: 13px; margin-bottom: 15px; }
         input.field-missing { border-color: #c0392b; background: #fdecea; }
+        .optional-tag { font-weight: normal; color: #888; font-size: 12px; }
         .print-btn { background: #27ae60; }
         .topbar a.back-btn { background: #1F4E79; color: white; padding: 6px 14px; border-radius: 4px; text-decoration: none; font-size: 13px; margin-left: 0; margin-right: 12px; }
         .title-row { display: flex; align-items: center; }
@@ -138,6 +139,14 @@
 
             {% if req.missing_fields %}
             <p class="missing">Still missing: {{ req.missing_fields | join(', ') }}</p>
+            {% endif %}
+
+            {% if template_info.optional_fields %}
+            <h4>Optional details <span class="optional-tag">(only included in the document if filled in)</span></h4>
+            {% for field in template_info.optional_fields %}
+            <label>{{ field }}</label>
+            <input name="{{ field }}" value="{{ req.extracted_fields.get(field, '') }}">
+            {% endfor %}
             {% endif %}
 
             {% if template_info.staff_fields %}

@@ -9,7 +9,7 @@ import json
 import os
 import re
 import requests
-from templates_config import TEMPLATES, required_fields_for, PREFERRED_LANGUAGE_FIELD
+from templates_config import TEMPLATES, required_fields_for, extractable_fields_for, PREFERRED_LANGUAGE_FIELD
 
 GROQ_API_KEY = os.environ.get("GROQ_API_KEY")
 MODEL = os.environ.get("GROQ_MODEL") or "openai/gpt-oss-120b"
@@ -53,7 +53,7 @@ def _chat(system: str, user: str, max_tokens: int) -> str:
 def _schema_block() -> str:
     lines = []
     for key in TEMPLATES:
-        fields = ", ".join(required_fields_for(key))
+        fields = ", ".join(extractable_fields_for(key))
         lines.append(f'- "{key}": {fields}')
     return "\n".join(lines)
 
@@ -289,10 +289,10 @@ def merge_followup_reply(previous_fields: dict, agreement_type: str, reply_messa
     something the customer didn't actually mention in this message."""
     prompt = (
         f"Agreement type: {agreement_type}\n"
-        f"Required field names for this agreement type: {', '.join(required_fields_for(agreement_type))}\n"
+        f"Field names for this agreement type: {', '.join(extractable_fields_for(agreement_type))}\n"
         f"Customer's message: \"{reply_message}\"\n\n"
         f"Extract ONLY the field values mentioned in THIS message. Use "
-        f"EXACTLY the required field names listed above — do not invent "
+        f"EXACTLY the field names listed above — do not invent "
         f"your own field names or synonyms. Use null for any field not "
         f"mentioned in this message — do not guess, infer, or reuse a "
         f"value from anywhere else. Any date field MUST be normalized to "
@@ -312,7 +312,7 @@ def merge_followup_reply(previous_fields: dict, agreement_type: str, reply_messa
     new_fields = json.loads(raw)
 
     merged_fields = dict(previous_fields)
-    for field in required_fields_for(agreement_type):
+    for field in extractable_fields_for(agreement_type):
         value = new_fields.get(field)
         if value not in (None, "", "null"):
             merged_fields[field] = value

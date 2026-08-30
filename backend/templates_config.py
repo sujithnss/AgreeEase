@@ -40,12 +40,15 @@ TEMPLATES = {
         # staff_field instead: defaults to FIXED_DURATION_MONTHS (11) on
         # the review dashboard, editable there for the 24/36-month cases.
         #
-        # Age/address are asked over WhatsApp like everything else here
-        # (customers do state them, and it saves staff from retyping what
+        # Address is asked over WhatsApp like everything else here
+        # (customers do state it, and it saves staff from retyping what
         # the customer already gave) — but the WhatsApp side won't always
-        # get a usable answer, so these stay editable on the review
+        # get a usable answer, so it stays editable on the review
         # dashboard as a correction/completion path, same as the rest of
-        # required_fields.
+        # required_fields. Age is deliberately NOT required (see
+        # optional_fields below) — many customers never volunteer it and
+        # chasing it over WhatsApp just for a document detail isn't worth
+        # the round-trip.
         #
         # Aadhaar numbers are deliberately NOT collected here, even though
         # the real vendor specimen's document body has a placeholder for
@@ -60,10 +63,8 @@ TEMPLATES = {
         # (docxtpl renders a missing context key as empty, not an error).
         "required_fields": [
             "landlord_name",
-            "landlord_age",
             "landlord_address",
             "tenant_name",
-            "tenant_age",
             "tenant_address",
             # property_description (the formal "മാർജിൻ" schedule clause —
             # door no., local body, district) is NOT collected separately
@@ -79,6 +80,20 @@ TEMPLATES = {
             "monthly_rent",
             "security_deposit",
             "start_date",
+        ],
+        # Fields the AI should still try to pick up if the customer
+        # happens to volunteer them (see extraction.extractable_fields_for()
+        # / merge_followup_reply()), but never asks a follow-up question
+        # about and never blocks approval on. If a value is present it goes
+        # into the document (both .docx templates wrap the age clause in
+        # {% if landlord_age %}/{% if tenant_age %} so it renders cleanly
+        # either way); if it's blank, the age phrase is omitted from the
+        # document entirely rather than printing with a blank/zero age.
+        # Editable on the review dashboard like required_fields, just
+        # without the "still missing" red-flagging.
+        "optional_fields": [
+            "landlord_age",
+            "tenant_age",
         ],
         # Not collected from the customer over WhatsApp — staff fill these
         # in (or confirm the pre-filled default) on the review dashboard
@@ -124,6 +139,19 @@ def required_fields_for(agreement_type: str) -> list:
     if len(t["files"]) > 1:
         fields.append(PREFERRED_LANGUAGE_FIELD)
     return fields
+
+
+def extractable_fields_for(agreement_type: str) -> list:
+    """required_fields_for() plus optional_fields -- the full set of field
+    names the AI is allowed to pull out of a customer's message. Used only
+    for the extraction/merge schema (extraction.py), so an optional field
+    still gets captured when a customer volunteers it unprompted. Missing-
+    field checks and follow-up questions must keep using required_fields_for()
+    alone, since optional fields are never asked about or blocked on."""
+    t = TEMPLATES.get(agreement_type)
+    if not t:
+        return []
+    return required_fields_for(agreement_type) + list(t.get("optional_fields", []))
 
 
 def get_template_file(agreement_type: str, language: str = "malayalam") -> str:

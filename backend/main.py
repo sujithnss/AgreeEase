@@ -802,7 +802,11 @@ async def approve_request(
         raise HTTPException(status_code=400, detail="Staff name is required")
 
     template_info = _effective_template_info(req.agreement_type)
-    editable_fields = template_info.get("required_fields", []) + template_info.get("staff_fields", [])
+    editable_fields = (
+        template_info.get("required_fields", [])
+        + template_info.get("staff_fields", [])
+        + template_info.get("optional_fields", [])
+    )
     updated_fields = dict(req.extracted_fields or {})
     for field in editable_fields:
         if field in form:
