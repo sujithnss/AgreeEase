@@ -143,7 +143,22 @@ def generate_followup_question(missing_fields: list, language: str) -> str:
 
 def process_message(message: str) -> dict:
     """Main entry point for a fresh customer message."""
-    result = extract_from_message(message)
+    try:
+        result = extract_from_message(message)
+    except (requests.exceptions.RequestException, json.JSONDecodeError) as e:
+        # Same shape as the "unrecognized agreement_type" case below --
+        # ask the customer to resend and stay in awaiting_customer_info,
+        # so main.py's webhook handler re-runs full classification on
+        # their next message instead of the request being silently lost.
+        print(f"[Extraction ERROR] Falling back to retry-request for {message!r}: {e}")
+        return {
+            "agreement_type": "unknown",
+            "language": "mixed",
+            "extracted_fields": {},
+            "missing_fields": [],
+            "next_question": extraction_error_message(),
+            "status": "awaiting_customer_info",
+        }
     agreement_type = result.get("agreement_type", "unknown")
     extracted_fields = result.get("extracted_fields", {})
     language = result.get("language", "english")
@@ -213,6 +228,32 @@ def clarification_message(language: str) -> str:
     if language == "mixed":
         return f"{_CLARIFICATION_MESSAGE_EN}\n{_CLARIFICATION_MESSAGE_ML}"
     return _CLARIFICATION_MESSAGE_EN
+
+
+_EXTRACTION_ERROR_MESSAGE_EN = (
+    "Sorry, we're having trouble processing your message right now. "
+    "Please try again in a few minutes."
+)
+_EXTRACTION_ERROR_MESSAGE_ML = (
+    "ക്ഷമിക്കണം, നിങ്ങളുടെ സന്ദേശം പ്രോസസ്സ് ചെയ്യുന്നതിൽ ഇപ്പോൾ ഒരു "
+    "തകരാർ ഉണ്ട്. ദയവായി കുറച്ച് സമയത്തിന് ശേഷം വീണ്ടും ശ്രമിക്കുക."
+)
+
+
+def extraction_error_message(language: str = "mixed") -> str:
+    """Sent when the Claude call/JSON parse in extract_from_message() or
+    merge_followup_reply() raises (API timeout, rate limit, malformed
+    response) -- keeps the customer informed instead of silently dropping
+    their message, and (paired with returning status
+    "awaiting_customer_info") means their next message retries extraction
+    from scratch rather than the request being lost. Defaults to "mixed"
+    since a fresh-message extraction failure means we never even learned
+    what language the customer was writing in."""
+    if language == "malayalam":
+        return _EXTRACTION_ERROR_MESSAGE_ML
+    if language == "mixed":
+        return f"{_EXTRACTION_ERROR_MESSAGE_EN}\n{_EXTRACTION_ERROR_MESSAGE_ML}"
+    return _EXTRACTION_ERROR_MESSAGE_EN
 
 
 _COMPLETION_MESSAGE_EN = "Thank you! Your details are with our team for review. We'll send you a draft shortly."
@@ -303,13 +344,26 @@ def merge_followup_reply(previous_fields: dict, agreement_type: str, reply_messa
         f"exactly \"malayalam\" or \"english\". "
         f"Respond with ONLY valid JSON, nothing else."
     )
-    raw = _chat(
-        "You extract structured agreement data from a single message. Respond with ONLY valid JSON.",
-        prompt,
-        max_tokens=1200,
-    )
-    raw = raw.replace("```json", "").replace("```", "").strip()
-    new_fields = json.loads(raw)
+    try:
+        raw = _chat(
+            "You extract structured agreement data from a single message. Respond with ONLY valid JSON.",
+            prompt,
+            max_tokens=1200,
+        )
+        raw = raw.replace("```json", "").replace("```", "").strip()
+        new_fields = json.loads(raw)
+    except (requests.exceptions.RequestException, json.JSONDecodeError) as e:
+        # Leave previous_fields untouched rather than losing this reply --
+        # re-ask via the same missing-fields/status the customer was
+        # already in, so their next message retries this same merge.
+        print(f"[Follow-up extraction ERROR] Falling back to unchanged fields for {reply_message!r}: {e}")
+        missing = find_missing_fields(agreement_type, previous_fields)
+        return {
+            "extracted_fields": previous_fields,
+            "missing_fields": missing,
+            "next_question": extraction_error_message(language),
+            "status": "awaiting_customer_info",
+        }
 
     merged_fields = dict(previous_fields)
     for field in extractable_fields_for(agreement_type):
