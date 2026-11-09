@@ -69,5 +69,9 @@ def send_whatsapp_message(to_phone: str, message: str, attachment_path: str = No
         doc_response.raise_for_status()
         return {"status": "sent", "text": text_response.json(), "document": doc_response.json()}
     except requests.exceptions.RequestException as e:
-        print(f"[WhatsApp ERROR] Failed to send to {to_phone}: {e}")
-        return {"status": "error", "error": str(e)}
+        # Meta's actual error reason (e.g. "recipient not in allowed list",
+        # invalid parameter, etc.) is in the response body -- the bare
+        # exception string from `requests` only has the status code/URL.
+        body = e.response.text if e.response is not None else "<no response>"
+        print(f"[WhatsApp ERROR] Failed to send to {to_phone}: {e}\n  Response body: {body}")
+        return {"status": "error", "error": str(e), "response_body": body}
