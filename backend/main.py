@@ -25,6 +25,13 @@ import io
 import json
 import datetime
 
+# Loads backend/.env into os.environ, if present -- must run before any
+# of this module's own imports below, since whatsapp.py/ratelimit.py/etc.
+# read their env vars at import time, not lazily. Silently does nothing
+# in production (Render sets real env vars directly, no .env file there).
+from dotenv import load_dotenv
+load_dotenv()
+
 from fastapi import FastAPI, Request, Form, Depends, HTTPException
 from fastapi.responses import HTMLResponse, RedirectResponse, FileResponse, PlainTextResponse, StreamingResponse
 from fastapi.templating import Jinja2Templates

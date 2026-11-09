@@ -25,6 +25,16 @@ SQLALCHEMY_DATABASE_URL = os.environ.get("DATABASE_URL") or f"sqlite:///{os.path
 if SQLALCHEMY_DATABASE_URL.startswith("postgres://"):
     SQLALCHEMY_DATABASE_URL = SQLALCHEMY_DATABASE_URL.replace("postgres://", "postgresql://", 1)
 
+# Some providers hand out (or SQLAlchemy may otherwise resolve to) the
+# psycopg3 driver scheme ("postgresql+psycopg://") or a bare
+# "postgresql://" that lets SQLAlchemy pick a default driver -- but only
+# psycopg2-binary is installed (see requirements.txt), not psycopg3. Force
+# the scheme to the driver we actually have, regardless of what scheme
+# came in, instead of adding a second Postgres driver dependency.
+if SQLALCHEMY_DATABASE_URL.startswith("postgresql"):
+    _rest = SQLALCHEMY_DATABASE_URL.split("://", 1)[1]
+    SQLALCHEMY_DATABASE_URL = f"postgresql+psycopg2://{_rest}"
+
 # check_same_thread is a SQLite-only connect arg; passing it to psycopg2
 # raises an error, so only apply it when actually running on SQLite.
 _connect_args = {"check_same_thread": False} if SQLALCHEMY_DATABASE_URL.startswith("sqlite") else {}

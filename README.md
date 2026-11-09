@@ -111,8 +111,7 @@ cp .env.example .env
 #   - DATABASE_URL        (optional locally — leave blank for SQLite; required
 #                          in production, see "Database persistence" below)
 
-export $(cat .env | xargs)      # or use python-dotenv / direnv
-uvicorn main:app --reload
+uvicorn main:app --reload       # auto-loads backend/.env via python-dotenv
 ```
 
 For draft PDFs to actually generate locally, install LibreOffice too
