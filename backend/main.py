@@ -128,6 +128,14 @@ def _effective_template_info(agreement_type: str) -> dict:
 
 
 # ---------------------------------------------------------------------------
+# Public pages
+# ---------------------------------------------------------------------------
+@app.get("/privacy", response_class=HTMLResponse)
+def privacy_policy(request: Request):
+    return templates.TemplateResponse(request, "privacy.html", {})
+
+
+# ---------------------------------------------------------------------------
 # Auth
 # ---------------------------------------------------------------------------
 @app.get("/login", response_class=HTMLResponse)
