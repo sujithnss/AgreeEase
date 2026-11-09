@@ -35,14 +35,7 @@
                   { "id": "malayalam", "title": "Malayalam" },
                   { "id": "english", "title": "English" }
                 ]
-              }
-            ],
-            "else": []
-          },
-          {
-            "type": "If",
-            "condition": "${form.agreement_type} == 'rental_agreement'",
-            "then": [
+              },
               {
                 "type": "Footer",
                 "label": "Continue",

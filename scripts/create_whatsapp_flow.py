@@ -45,8 +45,13 @@ def main():
         return
 
     flow_json = load_flow_json()
+    # Flow names must be unique within a WABA, and a published Flow's JSON
+    # is immutable -- every edit-and-republish cycle needs a fresh name,
+    # not just a fresh id, or Meta rejects the create call outright.
+    import datetime
+    flow_name = f"AgreeEase Agreement Request {datetime.datetime.utcnow().strftime('%Y%m%d%H%M%S')}"
     payload = {
-        "name": "AgreeEase Agreement Request",
+        "name": flow_name,
         "categories": ["OTHER"],
         "flow_json": json.dumps(flow_json),
         "publish": True,
