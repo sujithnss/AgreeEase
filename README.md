@@ -138,6 +138,11 @@ python3 scripts/create_admin.py
 
 ## Testing the flow without a live WhatsApp number
 
+A brand-new customer message no longer gets free-text AI extraction —
+it now triggers a WhatsApp Flow invite (see `backend/flows.py`), which
+needs a real WhatsApp client to actually fill in. Locally, simulate it in
+two steps instead:
+
 ```bash
 curl -X POST http://localhost:8000/webhook/whatsapp \
   -H "Content-Type: application/json" \
@@ -148,7 +153,7 @@ curl -X POST http://localhost:8000/webhook/whatsapp \
           "messages": [{
             "from": "919876543210",
             "type": "text",
-            "text": {"body": "Need a rental agreement for my 2bhk in kochi, rent is 15000, tenant name Rahul Menon, landlord name Suresh Kumar, deposit 30000, 11 months, starting 1 August 2026"}
+            "text": {"body": "Need a rental agreement"}
           }]
         }
       }]
@@ -156,11 +161,40 @@ curl -X POST http://localhost:8000/webhook/whatsapp \
   }'
 ```
 
-This mirrors the real shape Meta's Cloud API sends, so the same request
-body works once you switch to a live webhook.
+In stub mode (no `WHATSAPP_TOKEN`/`WHATSAPP_FLOW_ID`), this prints
+`[WhatsApp STUB] ... (token=<flow_token>)` to the console instead of
+sending a real Flow — copy that `flow_token`, then simulate the customer
+completing it:
+
+```bash
+curl -X POST http://localhost:8000/webhook/whatsapp \
+  -H "Content-Type: application/json" \
+  -d '{
+    "entry": [{
+      "changes": [{
+        "value": {
+          "messages": [{
+            "from": "919876543210",
+            "type": "interactive",
+            "interactive": {
+              "type": "nfm_reply",
+              "nfm_reply": {
+                "response_json": "{\"flow_token\": \"PASTE_TOKEN_HERE\", \"agreement_type\": \"rental_agreement\", \"preferred_document_language\": \"malayalam\", \"landlord_name\": \"Suresh Kumar\", \"landlord_address\": \"Kochi\", \"tenant_name\": \"Rahul Menon\", \"tenant_address\": \"Kochi\", \"property_address\": \"2BHK, Kochi\", \"monthly_rent\": \"15000\", \"security_deposit\": \"30000\", \"start_date\": \"2026-08-01\"}"
+              }
+            }
+          }]
+        }
+      }]
+    }]
+  }'
+```
+
+This mirrors the real shape Meta's Cloud API sends for both message
+types, so the same request bodies work once you switch to a live webhook
+and real Flow.
 
 Then:
-1. Log in and open `/dashboard` — the request appears with fields the AI extracted (the page auto-refreshes, so a new message shows up without a manual reload).
+1. Log in and open `/dashboard` — the request appears with fields from the Flow submission (the page auto-refreshes, so a new message shows up without a manual reload).
 2. Open it, correct anything needed, pick your name from the **Staff Name** dropdown, **Approve** — this generates the watermarked PDF draft (transliterating any English-typed name/address fields into Malayalam first, if that's the document language) and, in stub mode, prints the WhatsApp message to the console instead of sending it.
 3. Click **Customer Confirmed** to generate the final in-house copy and calculate the renewal date.
 4. Update **Payment Status** as payment comes in.
@@ -181,6 +215,12 @@ Then:
    fine for local testing where nothing calls the webhook but you).
 5. Expose your local server with a tunnel (e.g. `ngrok http 8000`) for testing, or point at a deployed URL.
 6. In the Meta App Dashboard's webhook setup, enter that URL + `/webhook/whatsapp` as the callback URL and the same string as `WHATSAPP_VERIFY_TOKEN` as the verify token, then subscribe to the `messages` field.
+7. Run `python3 scripts/create_whatsapp_flow.py` once to create and publish
+   the agreement-intake WhatsApp Flow (see `backend/flows.py` — this is
+   what customers fill in instead of free-text messages). Copy the
+   printed `flow_id` into `WHATSAPP_FLOW_ID`. Without it, `whatsapp.py`'s
+   `send_whatsapp_flow()` falls back to stub mode (console-logs instead of
+   sending), same as leaving `WHATSAPP_TOKEN` unset.
 
 ## Deploying (Render)
 
@@ -197,7 +237,7 @@ the converted PDF), then installs `backend/requirements.txt` as usual.
 To deploy:
 1. Connect the repo in Render as a Blueprint (uses `render.yaml` as-is).
 2. Fill in the `sync: false` env vars in the Render dashboard (`DATABASE_URL`,
-   `GROQ_API_KEY`, `WHATSAPP_TOKEN`, `WHATSAPP_PHONE_ID`,
+   `GROQ_API_KEY`, `WHATSAPP_TOKEN`, `WHATSAPP_PHONE_ID`, `WHATSAPP_FLOW_ID`,
    `WHATSAPP_VERIFY_TOKEN`, `WHATSAPP_APP_SECRET`, `DEFAULT_ADMIN_PASSWORD`) — these aren't stored
    in git. See "Database persistence" below for `DATABASE_URL` specifically
    — without it, all data is lost on the next deploy.

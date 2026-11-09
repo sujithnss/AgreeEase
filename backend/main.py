@@ -23,6 +23,7 @@ import hashlib
 import hmac
 import io
 import json
+import uuid
 import datetime
 
 # Loads backend/.env into os.environ, if present -- must run before any
@@ -45,15 +46,15 @@ from extraction import (
     merge_followup_reply,
     completion_message,
     draft_ready_message,
-    duplicate_request_message,
     renewal_reminder_message,
     resolve_doc_language,
     transliterate_fields_to_malayalam,
     build_property_description,
 )
+from flows import parse_flow_response
 from docgen import generate_document, convert_to_pdf
 from templates_config import TEMPLATES, available_languages_for, required_fields_for, duration_months_for, DEFAULT_FEE_DUE_DAY, DEFAULT_RENEWAL_FEE_INCREASE_TERMS
-from whatsapp import send_whatsapp_message
+from whatsapp import send_whatsapp_message, send_whatsapp_flow
 from ratelimit import allow_webhook_message
 from dateutils import calculate_agreement_end_date, start_date_looks_stale
 from auth import hash_password, verify_password, require_login, get_current_user, ensure_default_admin
@@ -94,14 +95,6 @@ def _verify_webhook_signature(raw_body: bytes, signature_header: str) -> bool:
     provided = signature_header[len("sha256="):]
     return hmac.compare_digest(expected, provided)
 
-
-# Statuses where a request is actively moving through the pipeline but
-# isn't the "still awaiting the customer's first reply" case handled
-# separately above (open_request) -- used to detect a duplicate re-send
-# from the same customer. Deliberately excludes "ready_to_print": once a
-# request is done, a new message from the same customer is presumed to be
-# a genuinely new ask, not a duplicate of the finished one.
-ACTIVE_DUPLICATE_STATUSES = ("ready_for_staff_review", "approved", "draft_sent")
 
 init_db()
 _seed_db = SessionLocal()
@@ -186,6 +179,45 @@ def whatsapp_webhook_verify(request: Request):
     raise HTTPException(status_code=403, detail="Webhook verification failed")
 
 
+def _handle_flow_completion(db: Session, customer_phone: str, nfm_reply: dict):
+    """Handles a WhatsApp Flow submission (see flows.py / flows_json/
+    agreement_request.json) — delivered as a normal webhook message of
+    type "interactive" with interactive.type == "nfm_reply". Meta JSON-
+    encodes the completed form's fields (plus the flow_token we originally
+    sent) into nfm_reply["response_json"] as a STRING, not an already-
+    parsed object."""
+    response_json = json.loads(nfm_reply.get("response_json", "{}"))
+    flow_token = response_json.get("flow_token")
+    agreement_type = response_json.get("agreement_type")
+
+    row = (
+        db.query(AgreementRequest)
+        .filter(AgreementRequest.flow_token == flow_token, AgreementRequest.is_deleted.isnot(True))
+        .order_by(AgreementRequest.id.desc())
+        .first()
+    )
+    if not row:
+        log_action(db, 0, "flow_completion_unmatched", "system", {"flow_token": flow_token})
+        return {"status": "ignored", "reason": "no matching request for flow_token"}
+
+    result = parse_flow_response(agreement_type, response_json)
+    row.agreement_type = result["agreement_type"]
+    row.language = result["language"]
+    row.doc_language = result["doc_language"]
+    row.extracted_fields = result["extracted_fields"]
+    row.missing_fields = result["missing_fields"]
+    row.status = result["status"]
+    row.customer_name = result["extracted_fields"].get("tenant_name")
+    db.commit()
+    log_action(db, row.id, "flow_completed", "system", result)
+
+    if result["next_question"]:
+        send_whatsapp_message(customer_phone, result["next_question"])
+    else:
+        send_whatsapp_message(customer_phone, completion_message(result["language"]))
+    return {"status": "ok", "request_id": row.id}
+
+
 @app.post("/webhook/whatsapp")
 async def whatsapp_webhook(request: Request, db: Session = Depends(get_db)):
     raw_body = await request.body()
@@ -202,10 +234,20 @@ async def whatsapp_webhook(request: Request, db: Session = Depends(get_db)):
     except (KeyError, IndexError):
         return {"status": "ignored"}
 
+    customer_phone = message.get("from")
+
+    # A completed WhatsApp Flow arrives as an "interactive"/"nfm_reply"
+    # message, not a "text" one -- handle it before the text-only gate
+    # below, since it would otherwise just be ignored as non-text.
+    if message.get("type") == "interactive" and message.get("interactive", {}).get("type") == "nfm_reply":
+        if not allow_webhook_message(customer_phone):
+            log_action(db, 0, "webhook_rate_limited", "system", {"phone": customer_phone})
+            return {"status": "rate_limited"}
+        return _handle_flow_completion(db, customer_phone, message["interactive"]["nfm_reply"])
+
     if message.get("type") != "text":
         return {"status": "ignored", "reason": "non-text message type"}
 
-    customer_phone = message["from"]
     message_text = message.get("text", {}).get("body", "")
 
     # Rate limit BEFORE any DB/Groq work -- the whole point is to cap paid
@@ -266,61 +308,39 @@ async def whatsapp_webhook(request: Request, db: Session = Depends(get_db)):
             send_whatsapp_message(customer_phone, completion_message(open_request.language))
         return {"status": "ok", "request_id": open_request.id}
 
-    # Fresh request
-    result = process_message(message_text)
-
-    # Guard against the same customer re-sending the same ask while an
-    # earlier request from them is already in the pipeline -- without this,
-    # staff would see two separate rows for one customer and could end up
-    # working them as if unrelated. Only fires when BOTH the phone number
-    # AND the (extracted) customer name match an in-progress request --
-    # matching on phone alone would also flag legitimate cases, like the
-    # same landlord sending in a second, different property's agreement.
-    new_customer_name = (result["extracted_fields"].get("tenant_name") or "").strip().lower()
-    if new_customer_name:
-        active_request = (
-            db.query(AgreementRequest)
-            .filter(
-                AgreementRequest.customer_phone == customer_phone,
-                AgreementRequest.status.in_(ACTIVE_DUPLICATE_STATUSES),
-                AgreementRequest.is_deleted.isnot(True),
-                func.lower(func.trim(AgreementRequest.customer_name)) == new_customer_name,
-            )
-            .order_by(AgreementRequest.id.desc())
-            .first()
+    # Already sent a Flow invite to this phone and still waiting on it --
+    # resend the same invite (same flow_token) rather than starting a
+    # second, duplicate flow conversation for one customer.
+    pending_flow = (
+        db.query(AgreementRequest)
+        .filter(
+            AgreementRequest.customer_phone == customer_phone,
+            AgreementRequest.status == "awaiting_flow_completion",
+            AgreementRequest.is_deleted.isnot(True),
         )
-        if active_request:
-            log_action(
-                db, active_request.id, "duplicate_request_blocked", "system",
-                {"incoming_message": message_text},
-            )
-            send_whatsapp_message(customer_phone, duplicate_request_message(result["language"]))
-            return {"status": "ok", "duplicate_of_request_id": active_request.id}
+        .order_by(AgreementRequest.id.desc())
+        .first()
+    )
+    if pending_flow:
+        send_whatsapp_flow(customer_phone, pending_flow.flow_token)
+        log_action(db, pending_flow.id, "flow_resent", "system", {"incoming_message": message_text})
+        return {"status": "ok", "request_id": pending_flow.id}
 
+    # Brand-new conversation -- send the structured intake Flow (see
+    # flows.py) instead of running free-text AI extraction. flow_token is
+    # the only link the eventual completion webhook has back to this row.
+    flow_token = uuid.uuid4().hex
     new_request = AgreementRequest(
         customer_phone=customer_phone,
-        customer_name=result["extracted_fields"].get("tenant_name"),
         original_message=message_text,
-        language=result["language"],
-        # Prefer the customer's explicitly stated document-language
-        # preference (preferred_document_language, asked for as a normal
-        # required field); falls back to a guess from message language
-        # until they answer. Staff can still override on the dashboard.
-        doc_language=resolve_doc_language(result["language"], result["extracted_fields"]),
-        agreement_type=result["agreement_type"],
-        extracted_fields=result["extracted_fields"],
-        missing_fields=result["missing_fields"],
-        status=result["status"],
+        status="awaiting_flow_completion",
+        flow_token=flow_token,
     )
     db.add(new_request)
     db.commit()
     db.refresh(new_request)
-    log_action(db, new_request.id, "message_received_extracted", "system", result)
-
-    if result["next_question"]:
-        send_whatsapp_message(customer_phone, result["next_question"])
-    else:
-        send_whatsapp_message(customer_phone, completion_message(result["language"]))
+    send_whatsapp_flow(customer_phone, flow_token)
+    log_action(db, new_request.id, "flow_sent", "system", {"incoming_message": message_text})
 
     return {"status": "ok", "request_id": new_request.id}
 
@@ -379,6 +399,7 @@ def dashboard_poll(request: Request, db: Session = Depends(get_db)):
 
 
 STATUS_PIPELINE = [
+    ("awaiting_flow_completion", "Awaiting Flow Completion"),
     ("awaiting_customer_info", "Awaiting Customer Info"),
     ("ready_for_staff_review", "Ready for Staff Review"),
     ("approved", "Approved"),
@@ -387,7 +408,7 @@ STATUS_PIPELINE = [
     ("ready_to_print", "Ready to Print"),
 ]
 COMPLETED_STATUSES = ("confirmed", "ready_to_print")
-PENDING_STATUSES = ("awaiting_customer_info", "ready_for_staff_review")
+PENDING_STATUSES = ("awaiting_flow_completion", "awaiting_customer_info", "ready_for_staff_review")
 
 
 @app.get("/dashboard/reports", response_class=HTMLResponse)

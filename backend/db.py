@@ -80,9 +80,19 @@ class AgreementRequest(Base):
     extracted_fields = Column(JSON, default=dict)
     missing_fields = Column(JSON, default=list)
 
-    # status flow: awaiting_customer_info -> ready_for_staff_review ->
-    # approved -> draft_sent -> confirmed -> ready_to_print
-    status = Column(String, default="awaiting_customer_info")
+    # status flow: awaiting_flow_completion -> ready_for_staff_review ->
+    # approved -> draft_sent -> confirmed -> ready_to_print.
+    # awaiting_customer_info is the legacy free-text intake path's status
+    # (see extraction.py) -- kept alive only for requests already
+    # mid-conversation when the WhatsApp Flow intake (flows.py) shipped.
+    status = Column(String, default="awaiting_flow_completion")
+
+    # Set when a WhatsApp Flow invite is sent for this request (see
+    # flows.py / whatsapp.send_whatsapp_flow) so the Flow's completion
+    # webhook -- which carries no other link back to our DB -- can be
+    # matched to the right row. Unused for requests that came in through
+    # the legacy free-text path.
+    flow_token = Column(String, nullable=True, index=True)
 
     # Soft delete — staff can remove a wrongly-classified/junk request from
     # the dashboard, but the row (and its audit trail) stays in the DB
@@ -192,6 +202,11 @@ def _add_missing_columns():
         if "final_pdf_path" not in existing:
             conn.exec_driver_sql(
                 "ALTER TABLE agreement_requests ADD COLUMN final_pdf_path VARCHAR"
+            )
+            conn.commit()
+        if "flow_token" not in existing:
+            conn.exec_driver_sql(
+                "ALTER TABLE agreement_requests ADD COLUMN flow_token VARCHAR"
             )
             conn.commit()
 

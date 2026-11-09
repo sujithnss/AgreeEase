@@ -12,6 +12,9 @@ import requests
 
 WHATSAPP_TOKEN = os.environ.get("WHATSAPP_TOKEN")
 WHATSAPP_PHONE_ID = os.environ.get("WHATSAPP_PHONE_ID")
+# Set once by scripts/create_whatsapp_flow.py's printed output -- see
+# backend/flows.py for the Flow definition this id refers to.
+WHATSAPP_FLOW_ID = os.environ.get("WHATSAPP_FLOW_ID")
 GRAPH_API_BASE = f"https://graph.facebook.com/v20.0/{WHATSAPP_PHONE_ID}"
 
 
@@ -74,4 +77,46 @@ def send_whatsapp_message(to_phone: str, message: str, attachment_path: str = No
         # exception string from `requests` only has the status code/URL.
         body = e.response.text if e.response is not None else "<no response>"
         print(f"[WhatsApp ERROR] Failed to send to {to_phone}: {e}\n  Response body: {body}")
+        return {"status": "error", "error": str(e), "response_body": body}
+
+
+def send_whatsapp_flow(to_phone: str, flow_token: str, screen_id: str = "WELCOME", flow_cta: str = "Start"):
+    """Sends the agreement-intake WhatsApp Flow (backend/flows.py /
+    flows_json/agreement_request.json) as an interactive message, instead
+    of the plain text send above. flow_token is minted by the caller
+    (main.py) and stored on the AgreementRequest row so the Flow's
+    eventual completion webhook (an "nfm_reply" message) can be matched
+    back to the right row."""
+    if not WHATSAPP_TOKEN or not WHATSAPP_FLOW_ID:
+        print(f"[WhatsApp STUB] To: {to_phone}\nWould send Flow {WHATSAPP_FLOW_ID} (token={flow_token})")
+        return {"status": "stubbed"}
+
+    headers = {"Authorization": f"Bearer {WHATSAPP_TOKEN}"}
+    payload = {
+        "messaging_product": "whatsapp",
+        "to": to_phone,
+        "type": "interactive",
+        "interactive": {
+            "type": "flow",
+            "body": {"text": "Let's set up your agreement -- tap below to get started."},
+            "action": {
+                "name": "flow",
+                "parameters": {
+                    "flow_message_version": "3",
+                    "flow_id": WHATSAPP_FLOW_ID,
+                    "flow_token": flow_token,
+                    "flow_cta": flow_cta,
+                    "flow_action": "navigate",
+                    "flow_action_payload": {"screen": screen_id},
+                },
+            },
+        },
+    }
+    try:
+        response = requests.post(f"{GRAPH_API_BASE}/messages", headers=headers, json=payload)
+        response.raise_for_status()
+        return {"status": "sent", "response": response.json()}
+    except requests.exceptions.RequestException as e:
+        body = e.response.text if e.response is not None else "<no response>"
+        print(f"[WhatsApp ERROR] Failed to send Flow to {to_phone}: {e}\n  Response body: {body}")
         return {"status": "error", "error": str(e), "response_body": body}
