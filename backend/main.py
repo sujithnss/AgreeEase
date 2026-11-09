@@ -130,6 +130,15 @@ def _effective_template_info(agreement_type: str) -> dict:
 # ---------------------------------------------------------------------------
 # Public pages
 # ---------------------------------------------------------------------------
+@app.get("/health")
+def health():
+    # Deliberately no DB/template work -- this exists so an external
+    # keep-alive pinger can stop Render's free-tier instance from spinning
+    # down between requests (cold starts were making Meta's webhook
+    # deliveries time out before reaching us).
+    return {"status": "ok"}
+
+
 @app.get("/privacy", response_class=HTMLResponse)
 def privacy_policy(request: Request):
     return templates.TemplateResponse(request, "privacy.html", {})
