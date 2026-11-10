@@ -10,15 +10,15 @@
         "children": [
           {
             "type": "TextHeading",
-            "text": "Let's set up your agreement / നിങ്ങളുടെ കരാർ തയ്യാറാക്കാം"
+            "text": "Let's set up your agreement"
           },
           {
             "type": "TextBody",
-            "text": "We'll ask a few quick questions to prepare your agreement. / നിങ്ങളുടെ കരാർ തയ്യാറാക്കാൻ ഞങ്ങൾ ചില ചോദ്യങ്ങൾ ചോദിക്കും."
+            "text": "We'll ask a few quick questions to prepare your agreement."
           },
           {
             "type": "Footer",
-            "label": "Continue / തുടരുക",
+            "label": "Continue",
             "on-click-action": {
               "name": "navigate",
               "next": { "type": "screen", "name": "TYPE" },
@@ -38,16 +38,16 @@
           {
             "type": "RadioButtonsGroup",
             "name": "agreement_type",
-            "label": "What type of agreement do you need? / ഏത് തരം കരാറാണ് വേണ്ടത്?",
+            "label": "What type of agreement do you need?",
             "required": true,
             "data-source": [
-              { "id": "rental_agreement", "title": "Rent Home / വീട് വാടക" },
-              { "id": "shop_agreement", "title": "Commercial / കട / വ്യാപാര കരാർ" }
+              { "id": "rental_agreement", "title": "Rent Home" },
+              { "id": "shop_agreement", "title": "Commercial" }
             ]
           },
           {
             "type": "Footer",
-            "label": "Continue / തുടരുക",
+            "label": "Continue",
             "on-click-action": {
               "name": "navigate",
               "next": { "type": "screen", "name": "LANGUAGE" },
@@ -71,16 +71,16 @@
           {
             "type": "RadioButtonsGroup",
             "name": "preferred_document_language",
-            "label": "Which language should the document be in? / രേഖ ഏത് ഭാഷയിൽ വേണം?",
+            "label": "Which language should the document be in?",
             "required": true,
             "data-source": [
-              { "id": "english", "title": "English / ഇംഗ്ലീഷ്" },
-              { "id": "malayalam", "title": "Malayalam / മലയാളം" }
+              { "id": "english", "title": "English" },
+              { "id": "malayalam", "title": "Malayalam" }
             ]
           },
           {
             "type": "Footer",
-            "label": "Continue / തുടരുക",
+            "label": "Continue",
             "on-click-action": {
               "name": "navigate",
               "next": { "type": "screen", "name": "DETAILS" },
@@ -106,78 +106,111 @@
         "children": [
           {
             "type": "TextHeading",
-            "text": "Agreement Details / കരാർ വിവരങ്ങൾ"
+            "text": "Agreement Details"
           },
 
-          { "type": "TextInput", "name": "landlord_name", "label": "House Owner / Landlord Name / വീട്ടുടമയുടെ പേര്", "input-type": "text", "required": true },
-          { "type": "TextInput", "name": "landlord_address", "label": "House Owner / Landlord Address / വീട്ടുടമയുടെ വിലാസം", "input-type": "text", "required": true },
-          { "type": "TextInput", "name": "tenant_name", "label": "Tenant Name / വാടകക്കാരന്റെ പേര്", "input-type": "text", "required": true },
-          { "type": "TextInput", "name": "tenant_address", "label": "Tenant Address / വാടകക്കാരന്റെ വിലാസം", "input-type": "text", "required": true },
-          { "type": "TextInput", "name": "security_deposit", "label": "Advance Amount (INR) / അഡ്വാൻസ് തുക (രൂപ)", "input-type": "number", "required": true },
-          { "type": "TextInput", "name": "monthly_rent", "label": "Rent Amount (INR, monthly) / വാടക തുക (മാസം, രൂപ)", "input-type": "number", "required": true },
-          { "type": "DatePicker", "name": "start_date", "label": "Agreement Date / കരാർ തീയതി", "required": true },
+          { "type": "TextInput", "name": "landlord_name", "label": "House Owner Name", "input-type": "text", "required": true },
+          { "type": "TextInput", "name": "landlord_address", "label": "House Owner Address", "input-type": "text", "required": true },
+          { "type": "TextInput", "name": "tenant_name", "label": "Tenant Name", "input-type": "text", "required": true },
+          { "type": "TextInput", "name": "tenant_address", "label": "Tenant Address", "input-type": "text", "required": true },
+          { "type": "TextInput", "name": "security_deposit", "label": "Advance Amount (INR)", "input-type": "number", "required": true },
+          { "type": "TextInput", "name": "monthly_rent", "label": "Rent Amount (INR, monthly)", "input-type": "number", "required": true },
+          { "type": "DatePicker", "name": "start_date", "label": "Agreement Date", "required": true },
 
           {
             "type": "TextInput", "name": "fee_due_day",
-            "label": "Rent Paid Day of Month, e.g. 5 or 10 / വാടക നൽകുന്ന ദിവസം, ഉദാ: 5 അല്ലെങ്കിൽ 10",
+            "label": "Rent Paid Day of Month, e.g. 5 or 10",
             "input-type": "number",
             "visible": "`${data.agreement_type} == 'rental_agreement'`",
             "required": "`${data.agreement_type} == 'rental_agreement'`"
           },
           {
             "type": "TextInput", "name": "district",
-            "label": "District / ജില്ല",
+            "label": "District",
             "input-type": "text",
             "visible": "`${data.agreement_type} == 'rental_agreement'`",
             "required": "`${data.agreement_type} == 'rental_agreement'`"
           },
           {
             "type": "RadioButtonsGroup", "name": "local_body_type",
-            "label": "Local Body Type / തദ്ദേശ സ്ഥാപന തരം",
+            "label": "Local Body Type",
             "data-source": [
-              { "id": "grama_panchayat", "title": "Grama Panchayat / ഗ്രാമപഞ്ചായത്ത്" },
-              { "id": "municipality", "title": "Municipality / മുനിസിപ്പാലിറ്റി" },
-              { "id": "corporation", "title": "Corporation / കോർപ്പറേഷൻ" }
+              { "id": "grama_panchayat", "title": "Grama Panchayat" },
+              { "id": "municipality", "title": "Municipality" },
+              { "id": "corporation", "title": "Corporation" }
             ],
             "visible": "`${data.agreement_type} == 'rental_agreement'`",
             "required": "`${data.agreement_type} == 'rental_agreement'`"
           },
           {
             "type": "TextInput", "name": "local_body_name",
-            "label": "Name of Local Body / തദ്ദേശ സ്ഥാപനത്തിന്റെ പേര്",
+            "label": "Name of Local Body",
             "input-type": "text",
             "visible": "`${data.agreement_type} == 'rental_agreement'`",
             "required": "`${data.agreement_type} == 'rental_agreement'`"
           },
           {
             "type": "RadioButtonsGroup", "name": "property_type",
-            "label": "Type of Property / വസ്തുവിന്റെ തരം",
+            "label": "Type of Property",
             "data-source": [
-              { "id": "flat", "title": "Flat / ഫ്ലാറ്റ്" },
-              { "id": "apartment", "title": "Apartment / അപ്പാർട്ട്മെന്റ്" },
-              { "id": "house", "title": "House / വീട്" },
-              { "id": "quarters", "title": "Quarters / ക്വാർട്ടേഴ്സ്" }
+              { "id": "flat_apartment", "title": "Flat/Apartment" },
+              { "id": "house", "title": "House" },
+              { "id": "quarters", "title": "Quarters" }
             ],
             "visible": "`${data.agreement_type} == 'rental_agreement'`",
             "required": "`${data.agreement_type} == 'rental_agreement'`"
           },
+
           {
             "type": "TextInput", "name": "flat_name",
-            "label": "Flat/Unit Name or Number / ഫ്ലാറ്റ്/യൂണിറ്റ് പേര് അല്ലെങ്കിൽ നമ്പർ",
+            "label": "Flat Name (optional)",
             "input-type": "text",
             "required": false,
-            "visible": "`(${data.agreement_type} == 'rental_agreement') && (${form.property_type} == 'flat' || ${form.property_type} == 'apartment')`"
+            "visible": "`(${data.agreement_type} == 'rental_agreement') && (${form.property_type} == 'flat_apartment')`"
           },
           {
-            "type": "TextInput", "name": "floor",
-            "label": "Floor / നില",
+            "type": "TextInput", "name": "quarters_name",
+            "label": "Quarters Name (optional)",
             "input-type": "text",
             "required": false,
-            "visible": "`(${data.agreement_type} == 'rental_agreement') && (${form.property_type} == 'house' || ${form.property_type} == 'quarters')`"
+            "visible": "`(${data.agreement_type} == 'rental_agreement') && (${form.property_type} == 'quarters')`"
           },
+          {
+            "type": "TextInput", "name": "floor_number",
+            "label": "Floor Number (optional)",
+            "input-type": "text",
+            "required": false,
+            "visible": "`(${data.agreement_type} == 'rental_agreement') && (${form.property_type} == 'flat_apartment' || ${form.property_type} == 'quarters')`"
+          },
+          {
+            "type": "TextInput", "name": "building_number",
+            "label": "Building Number (optional)",
+            "input-type": "text",
+            "required": false,
+            "visible": "`(${data.agreement_type} == 'rental_agreement') && (${form.property_type} == 'flat_apartment' || ${form.property_type} == 'quarters')`"
+          },
+          {
+            "type": "RadioButtonsGroup", "name": "house_portion",
+            "label": "House Type",
+            "data-source": [
+              { "id": "ground_floor", "title": "Ground Floor House" },
+              { "id": "top_floor", "title": "Top Floor House" },
+              { "id": "single_house", "title": "Single House" }
+            ],
+            "visible": "`(${data.agreement_type} == 'rental_agreement') && (${form.property_type} == 'house')`",
+            "required": "`(${data.agreement_type} == 'rental_agreement') && (${form.property_type} == 'house')`"
+          },
+          {
+            "type": "TextInput", "name": "house_number",
+            "label": "House Number (optional)",
+            "input-type": "text",
+            "required": false,
+            "visible": "`(${data.agreement_type} == 'rental_agreement') && (${form.property_type} == 'house')`"
+          },
+
           {
             "type": "TextInput", "name": "property_address",
-            "label": "Door No. / Additional Address Details, optional / ഡോർ നമ്പർ / കൂടുതൽ വിലാസ വിവരങ്ങൾ, ഓപ്ഷണൽ",
+            "label": "Door No. / Additional Address Details (optional)",
             "input-type": "text",
             "required": false,
             "visible": "`${data.agreement_type} == 'rental_agreement'`"
@@ -185,21 +218,21 @@
 
           {
             "type": "TextInput", "name": "shop_address",
-            "label": "Shop Address / കടയുടെ വിലാസം",
+            "label": "Shop Address",
             "input-type": "text",
             "visible": "`${data.agreement_type} == 'shop_agreement'`",
             "required": "`${data.agreement_type} == 'shop_agreement'`"
           },
           {
             "type": "TextInput", "name": "business_type",
-            "label": "Type of Business / ബിസിനസ്സിന്റെ തരം",
+            "label": "Type of Business",
             "input-type": "text",
             "visible": "`${data.agreement_type} == 'shop_agreement'`",
             "required": "`${data.agreement_type} == 'shop_agreement'`"
           },
           {
             "type": "TextInput", "name": "agreement_duration_months",
-            "label": "Agreement Duration, months / കരാർ കാലാവധി, മാസം",
+            "label": "Agreement Duration, months",
             "input-type": "number",
             "visible": "`${data.agreement_type} == 'shop_agreement'`",
             "required": "`${data.agreement_type} == 'shop_agreement'`"
@@ -207,7 +240,7 @@
 
           {
             "type": "Footer",
-            "label": "Submit / സമർപ്പിക്കുക",
+            "label": "Submit",
             "on-click-action": {
               "name": "complete",
               "payload": {
@@ -226,7 +259,11 @@
                 "local_body_name": "${form.local_body_name}",
                 "property_type": "${form.property_type}",
                 "flat_name": "${form.flat_name}",
-                "floor": "${form.floor}",
+                "quarters_name": "${form.quarters_name}",
+                "floor_number": "${form.floor_number}",
+                "building_number": "${form.building_number}",
+                "house_portion": "${form.house_portion}",
+                "house_number": "${form.house_number}",
                 "property_address": "${form.property_address}",
                 "shop_address": "${form.shop_address}",
                 "business_type": "${form.business_type}",

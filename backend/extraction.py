@@ -409,14 +409,15 @@ def transliterate_fields_to_malayalam(fields: dict) -> dict:
     approve_request() in main.py) -- that field is naturally skipped
     here too, since it has no Latin letters left to transliterate.
 
-    local_body_type and property_type are also excluded even though
-    their stored value is a plain Latin-script id (e.g. "grama_panchayat",
-    "flat") -- that's an internal RadioButtonsGroup option id, not
-    customer-typed text, and transliterating it letter-by-letter would
-    produce garbage rather than the correct Malayalam term (which
-    build_property_description() already looked up correctly via
-    _LOCAL_BODY_LABELS/_PROPERTY_TYPE_LABELS)."""
-    EXCLUDED_FIELDS = {PREFERRED_LANGUAGE_FIELD, "local_body_type", "property_type"}
+    local_body_type, property_type, and house_portion are also excluded
+    even though their stored value is a plain Latin-script id (e.g.
+    "grama_panchayat", "flat_apartment", "ground_floor") -- those are
+    internal RadioButtonsGroup option ids, not customer-typed text, and
+    transliterating one letter-by-letter would produce garbage rather
+    than the correct Malayalam term (which build_property_description()
+    already looks up correctly via _LOCAL_BODY_LABELS/
+    _PROPERTY_TYPE_LABELS/_HOUSE_PORTION_LABELS)."""
+    EXCLUDED_FIELDS = {PREFERRED_LANGUAGE_FIELD, "local_body_type", "property_type", "house_portion"}
     candidates = {
         key: value
         for key, value in fields.items()
@@ -447,10 +448,10 @@ def transliterate_fields_to_malayalam(fields: dict) -> dict:
     return merged
 
 
-# Labels for the two structured choice fields the WhatsApp Flow collects
-# (local_body_type, property_type) -- used only to compose
+# Labels for the structured choice fields the WhatsApp Flow collects
+# (local_body_type, property_type, house_portion) -- used only to compose
 # build_property_description()'s sentence below. Keyed by the Flow's
-# RadioButtonsGroup option ids, which is also why these two fields are
+# RadioButtonsGroup option ids, which is also why these fields are
 # excluded from transliterate_fields_to_malayalam() above: their stored
 # value is an internal id like "grama_panchayat", not customer-typed
 # text, so transliterating it directly would produce garbage.
@@ -460,23 +461,64 @@ _LOCAL_BODY_LABELS = {
     "corporation": {"english": "Corporation", "malayalam_locative": "കോർപ്പറേഷനിൽ"},
 }
 _PROPERTY_TYPE_LABELS = {
-    "flat": {"english": "Flat", "malayalam": "ഫ്ലാറ്റ്"},
-    "apartment": {"english": "Apartment", "malayalam": "അപ്പാർട്ട്മെന്റ്"},
+    "flat_apartment": {"english": "Flat/Apartment", "malayalam": "ഫ്ലാറ്റ്/അപ്പാർട്ട്മെന്റ്"},
     "house": {"english": "House", "malayalam": "വീട്"},
     "quarters": {"english": "Quarters", "malayalam": "ക്വാർട്ടേഴ്സ്"},
 }
+_HOUSE_PORTION_LABELS = {
+    "ground_floor": {"english": "Ground Floor House", "malayalam": "താഴത്തെ നിലയിലുള്ള വീട്"},
+    "top_floor": {"english": "Top Floor House", "malayalam": "മുകളിലെ നിലയിലുള്ള വീട്"},
+    "single_house": {"english": "Single House", "malayalam": "ഒറ്റയ്ക്കുള്ള വീട്"},
+}
+
+
+def _property_subject(fields: dict, language: str) -> str:
+    """Composes the noun phrase naming the property itself -- the subject
+    of build_property_description()'s sentence -- from property_type and
+    whichever of its dynamic follow-up fields were filled (flat_name/
+    quarters_name + floor_number/building_number for Flat/Apartment and
+    Quarters, or house_portion + house_number for House). Falls back to a
+    generic "Property"/"വസ്തു" if property_type is missing/unrecognized or
+    nothing further was given."""
+    property_type_id = fields.get("property_type")
+    base_label = _PROPERTY_TYPE_LABELS.get(property_type_id, {}).get(language, "")
+    generic = "വസ്തു" if language == "malayalam" else "Property"
+
+    if property_type_id == "house":
+        portion = _HOUSE_PORTION_LABELS.get(fields.get("house_portion"), {})
+        portion_label = portion.get(language) or base_label or generic
+        house_number = (fields.get("house_number") or "").strip()
+        if not house_number:
+            return portion_label
+        number_piece = f"നമ്പർ {house_number}" if language == "malayalam" else f"No. {house_number}"
+        return f"{portion_label}, {number_piece}"
+
+    if property_type_id in ("flat_apartment", "quarters"):
+        name_field = "flat_name" if property_type_id == "flat_apartment" else "quarters_name"
+        name = (fields.get(name_field) or "").strip()
+        floor_number = (fields.get("floor_number") or "").strip()
+        building_number = (fields.get("building_number") or "").strip()
+        pieces = [f"{name} എന്ന {base_label}" if name else base_label] if language == "malayalam" \
+            else [f"{base_label} {name}".strip() if name else base_label]
+        if building_number:
+            pieces.append(f"കെട്ടിടം നമ്പർ {building_number}" if language == "malayalam" else f"Building No. {building_number}")
+        if floor_number:
+            pieces.append(f"{floor_number} നില" if language == "malayalam" else f"{floor_number} Floor")
+        return ", ".join(p for p in pieces if p) or generic
+
+    return base_label or generic
 
 
 def build_property_description(fields: dict, language: str) -> str:
     """Deterministically composes the formal property-description clause
     (the vendor specimen's "മാർജിൻ" schedule text) from structured fields
     the customer answers directly via the WhatsApp Flow -- district,
-    local_body_type, local_body_name, property_type, and the dynamic
-    flat_name/floor follow-up, plus an optional free-text property_address
-    used only as a door-number/extra-detail clause. No AI call: customers
-    now answer a direct structured question instead of typing a free-text
-    address for an AI to guess these same pieces out of, so there's
-    nothing left to extract.
+    local_body_type, local_body_name, property_type and its dynamic
+    follow-up fields (see _property_subject()), plus an optional free-text
+    property_address used only as a door-number/extra-detail clause. No
+    AI call: customers now answer a direct structured question instead of
+    typing a free-text address for an AI to guess these same pieces out
+    of, so there's nothing left to extract.
 
     Returns "" if district or local_body_name is missing -- docxtpl
     renders a missing/blank {{ property_description }} cleanly (same as
@@ -487,37 +529,19 @@ def build_property_description(fields: dict, language: str) -> str:
         return ""
 
     local_body = _LOCAL_BODY_LABELS.get(fields.get("local_body_type"), {})
-    property_type = _PROPERTY_TYPE_LABELS.get(fields.get("property_type"), {})
-    flat_name = (fields.get("flat_name") or "").strip()
-    floor = (fields.get("floor") or "").strip()
     door_detail = (fields.get("property_address") or "").strip()
+    subject = _property_subject(fields, language)
 
     if language == "malayalam":
         body_locative = local_body.get("malayalam_locative", "")
-        property_label = property_type.get("malayalam", "വീട്")
-        if flat_name:
-            extra = f"{flat_name} എന്ന {property_label}"
-        elif floor:
-            extra = f"{floor} നിലയിലുള്ള {property_label}"
-        else:
-            extra = property_label
         if door_detail:
-            clause = (
-                f"{district} ജില്ലയിൽ {local_body_name} {body_locative} സ്ഥിതി ചെയ്യുന്നതും "
-                f"{door_detail} എന്ന നമ്പറിട്ടതുമായ"
-            )
-        else:
-            clause = f"{district} ജില്ലയിൽ {local_body_name} {body_locative} സ്ഥിതി ചെയ്യുന്ന"
-        return f"{clause} {extra}.".replace("  ", " ")
+            return (
+                f"{subject}, {district} ജില്ലയിൽ {local_body_name} {body_locative} "
+                f"സ്ഥിതി ചെയ്യുന്നതും {door_detail} എന്ന നമ്പറിട്ടതുമായത്."
+            ).replace("  ", " ")
+        return f"{district} ജില്ലയിൽ {local_body_name} {body_locative} സ്ഥിതി ചെയ്യുന്ന {subject}.".replace("  ", " ")
 
     body_label = local_body.get("english", "")
-    property_label = property_type.get("english", "House")
-    door_clause = f"bearing No. {door_detail}, " if door_detail else ""
-    if flat_name:
-        extra = f" ({property_label} No. {flat_name})"
-    elif floor:
-        extra = f" ({floor} floor)"
-    else:
-        extra = ""
     locality = f"{local_body_name} {body_label}".strip()
-    return f"{property_label} {door_clause}situated in {locality}, {district} District{extra}.".replace("  ", " ")
+    door_clause = f", bearing door No. {door_detail}" if door_detail else ""
+    return f"{subject} situated in {locality}, {district} District{door_clause}.".replace("  ", " ")

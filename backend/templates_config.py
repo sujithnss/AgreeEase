@@ -95,18 +95,29 @@ TEMPLATES = {
         # Editable on the review dashboard like required_fields, just
         # without the "still missing" red-flagging.
         #
-        # flat_name/floor are the dynamic follow-up to property_type (only
-        # one of the two is ever filled, depending on Flat/Apartment vs
-        # House/Quarters). property_address is a free-text door-number/
-        # extra-detail field -- optional because district/local_body_name
-        # alone are already enough for build_property_description() to
-        # compose a usable clause; this just lets it prepend a door number
-        # when the customer happens to give one.
+        # flat_name/quarters_name/floor_number/building_number/house_portion/
+        # house_number are the dynamic follow-up to property_type -- only
+        # the subset matching whatever was picked (Flat/Apartment, House,
+        # or Quarters) is ever filled in. All optional (never block
+        # approval) since required_fields_for() has no concept of "required
+        # only when property_type == X" -- the Flow JSON enforces that
+        # narrower rule itself (house_portion is required there, but only
+        # while visible, i.e. only when property_type == 'house'). None of
+        # these block approval if blank; build_property_description()
+        # already composes a usable clause from whichever subset is present.
+        # property_address is a free-text door-number/extra-detail field --
+        # optional because district/local_body_name alone are already
+        # enough for a usable clause; this just lets it prepend a door
+        # number when the customer happens to give one.
         "optional_fields": [
             "landlord_age",
             "tenant_age",
             "flat_name",
-            "floor",
+            "quarters_name",
+            "floor_number",
+            "building_number",
+            "house_portion",
+            "house_number",
             "property_address",
         ],
         # Not collected from the customer over WhatsApp — staff fill these
