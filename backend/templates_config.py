@@ -66,20 +66,23 @@ TEMPLATES = {
             "landlord_address",
             "tenant_name",
             "tenant_address",
-            # property_description (the formal "മാർജിൻ" schedule clause —
-            # door no., local body, district) is NOT collected separately
-            # here — customers on WhatsApp rarely have that land-record-
-            # style detail on hand. Instead it's generated automatically
-            # from this address at approval time — see
-            # extraction.build_property_description() and its call site
-            # in main.py's approve_request(). Make sure a door/building
-            # number and municipality/panchayat are asked for as part of
-            # this field's follow-up question (see FOLLOWUP_SYSTEM_PROMPT
-            # in extraction.py) so there's enough to work with.
-            "property_address",
             "monthly_rent",
             "security_deposit",
             "start_date",
+            "fee_due_day",
+            # district/local_body_type/local_body_name/property_type feed
+            # the formal "മാർജിൻ" schedule clause (property_description) --
+            # composed deterministically from these structured fields by
+            # extraction.build_property_description(), called from
+            # main.py's approve_request(). Collected as their own fields
+            # (via the WhatsApp Flow -- see backend/flows_json/
+            # agreement_request.json) rather than guessed out of free text,
+            # since customers rarely type land-record-style detail
+            # unprompted but will answer a direct structured question.
+            "district",
+            "local_body_type",
+            "local_body_name",
+            "property_type",
         ],
         # Fields the AI should still try to pick up if the customer
         # happens to volunteer them (see extraction.extractable_fields_for()
@@ -91,20 +94,29 @@ TEMPLATES = {
         # document entirely rather than printing with a blank/zero age.
         # Editable on the review dashboard like required_fields, just
         # without the "still missing" red-flagging.
+        #
+        # flat_name/floor are the dynamic follow-up to property_type (only
+        # one of the two is ever filled, depending on Flat/Apartment vs
+        # House/Quarters). property_address is a free-text door-number/
+        # extra-detail field -- optional because district/local_body_name
+        # alone are already enough for build_property_description() to
+        # compose a usable clause; this just lets it prepend a door number
+        # when the customer happens to give one.
         "optional_fields": [
             "landlord_age",
             "tenant_age",
+            "flat_name",
+            "floor",
+            "property_address",
         ],
         # Not collected from the customer over WhatsApp — staff fill these
         # in (or confirm the pre-filled default) on the review dashboard
         # before approving. All are pre-filled with sensible defaults on
         # the review page (see main.py: review_request()'s field_defaults
-        # — FIXED_DURATION_MONTHS for duration, DEFAULT_FEE_DUE_DAY for
-        # fee_due_day, DEFAULT_RENEWAL_FEE_INCREASE_TERMS for
-        # renewal_fee_increase_terms) since most agreements use the common
-        # case and defaulting saves staff from typing it every time.
+        # — FIXED_DURATION_MONTHS for duration, DEFAULT_RENEWAL_FEE_INCREASE_TERMS
+        # for renewal_fee_increase_terms) since most agreements use the
+        # common case and defaulting saves staff from typing it every time.
         "staff_fields": [
-            "fee_due_day",
             "agreement_duration_months",
             # Clause (13)'s renewal wording — "കാലാനുസൃതമായ [ലൈസൻസ് ഫീസ്
             # വർദ്ധനവ്]" ("a customary/prevailing-rate [license fee
@@ -200,10 +212,10 @@ def duration_months_for(agreement_type: str, fields: dict):
     return FIXED_DURATION_MONTHS.get(agreement_type)
 
 
-# Default day-of-month rent is due, pre-filled on the review dashboard for
-# the rental_agreement fee_due_day staff_field (see main.py:
-# review_request()'s field_defaults) since most agreements use the 5th —
-# staff edit it there when a request needs a different day.
+# Fallback day-of-month rent is due, pre-filled on the review dashboard
+# (see main.py: review_request()'s field_defaults) only for requests
+# missing fee_due_day -- it's now a customer-provided required_field via
+# the WhatsApp Flow, so this mainly covers pre-Flow legacy requests.
 DEFAULT_FEE_DUE_DAY = 5
 
 # Default wording for clause (13)'s renewal_fee_increase_terms staff_field

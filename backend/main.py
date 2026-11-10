@@ -904,16 +904,15 @@ async def approve_request(
     req.doc_language = doc_language
 
     # Build the formal "മാർജിൻ" schedule-clause property description
-    # directly from the customer's plain-language property_address, in
-    # the document's language -- customers don't collect this field
-    # themselves (see templates_config.py). Done here (rather than
-    # inside docgen.py) so the draft and final copy always use the exact
-    # same wording -- it's persisted onto the request, not re-derived
-    # per document.
-    property_address = req.extracted_fields.get("property_address")
-    if property_address:
-        property_description = build_property_description(property_address, doc_language)
-        if property_description != req.extracted_fields.get("property_description"):
+    # directly from the customer's structured district/local_body/
+    # property_type answers (see templates_config.py), in the document's
+    # language. Done here (rather than inside docgen.py) so the draft and
+    # final copy always use the exact same wording -- it's persisted onto
+    # the request, not re-derived per document. shop_agreement has no
+    # property_description placeholder, so this is a no-op for it.
+    if req.agreement_type == "rental_agreement":
+        property_description = build_property_description(req.extracted_fields, doc_language)
+        if property_description and property_description != req.extracted_fields.get("property_description"):
             req.extracted_fields = {
                 **req.extracted_fields,
                 "property_description": property_description,

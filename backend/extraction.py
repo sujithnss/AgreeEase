@@ -407,11 +407,20 @@ def transliterate_fields_to_malayalam(fields: dict) -> dict:
     Called after build_property_description() has already written a
     Malayalam-script property_description onto the fields dict (see
     approve_request() in main.py) -- that field is naturally skipped
-    here too, since it has no Latin letters left to transliterate."""
+    here too, since it has no Latin letters left to transliterate.
+
+    local_body_type and property_type are also excluded even though
+    their stored value is a plain Latin-script id (e.g. "grama_panchayat",
+    "flat") -- that's an internal RadioButtonsGroup option id, not
+    customer-typed text, and transliterating it letter-by-letter would
+    produce garbage rather than the correct Malayalam term (which
+    build_property_description() already looked up correctly via
+    _LOCAL_BODY_LABELS/_PROPERTY_TYPE_LABELS)."""
+    EXCLUDED_FIELDS = {PREFERRED_LANGUAGE_FIELD, "local_body_type", "property_type"}
     candidates = {
         key: value
         for key, value in fields.items()
-        if key != PREFERRED_LANGUAGE_FIELD
+        if key not in EXCLUDED_FIELDS
         and isinstance(value, str)
         and _LATIN_LETTERS_RE.search(value)
     }
@@ -438,54 +447,77 @@ def transliterate_fields_to_malayalam(fields: dict) -> dict:
     return merged
 
 
-PROPERTY_DESCRIPTION_SYSTEM_PROMPT = """You write the formal property
-description clause for a Kerala rental/license agreement -- the
-"മാർജിൻ" schedule clause in the vendor's Malayalam specimen -- from a
-customer's plain-language property address.
-
-From the address, identify whatever you can of: door/building number,
-the local body name and type (Municipality, Corporation, or
-Panchayat), and the District. Do NOT invent or guess anything not
-present or clearly implied in the address -- just omit a piece you
-can't identify rather than making it up.
-
-Write ONE sentence in the requested target language, following this
-pattern (adapt it to whatever pieces are actually available):
-
-Malayalam example (for door no. 6/83, Ramanattukara Municipality,
-Kozhikode District):
-"കോഴിക്കോട് ജില്ലയിൽ രാമനാട്ടുകര മുനിസിപ്പാലിറ്റിയിൽ സ്ഥിതി ചെയ്യുന്നതും
-6/83 എന്ന നമ്പറിട്ടതുമായ വീട്."
-
-English example (same address):
-"House bearing No. 6/83, situated in Ramanattukara Municipality,
-Kozhikode District."
-
-Place/local-body names should be transliterated into Malayalam script
-the way they are commonly written in Malayalam when the target
-language is Malayalam. Keep door/survey numbers and any other digits
-exactly as given.
-
-Respond with ONLY the finished sentence in the requested target
-language and script -- nothing else, no explanation, no quotes."""
+# Labels for the two structured choice fields the WhatsApp Flow collects
+# (local_body_type, property_type) -- used only to compose
+# build_property_description()'s sentence below. Keyed by the Flow's
+# RadioButtonsGroup option ids, which is also why these two fields are
+# excluded from transliterate_fields_to_malayalam() above: their stored
+# value is an internal id like "grama_panchayat", not customer-typed
+# text, so transliterating it directly would produce garbage.
+_LOCAL_BODY_LABELS = {
+    "grama_panchayat": {"english": "Grama Panchayat", "malayalam_locative": "ഗ്രാമപഞ്ചായത്തിൽ"},
+    "municipality": {"english": "Municipality", "malayalam_locative": "മുനിസിപ്പാലിറ്റിയിൽ"},
+    "corporation": {"english": "Corporation", "malayalam_locative": "കോർപ്പറേഷനിൽ"},
+}
+_PROPERTY_TYPE_LABELS = {
+    "flat": {"english": "Flat", "malayalam": "ഫ്ലാറ്റ്"},
+    "apartment": {"english": "Apartment", "malayalam": "അപ്പാർട്ട്മെന്റ്"},
+    "house": {"english": "House", "malayalam": "വീട്"},
+    "quarters": {"english": "Quarters", "malayalam": "ക്വാർട്ടേഴ്സ്"},
+}
 
 
-def build_property_description(property_address: str, language: str) -> str:
-    """Builds the formal property-description clause (the vendor
-    specimen's "മാർജിൻ" schedule text) from the customer's plain-language
-    property_address, directly in the document's target language --
-    so customers only need to give one normal address over WhatsApp
-    instead of a separate land-record-style description they're
-    unlikely to have on hand (door no., local body, district). Falls
-    back to the raw address unchanged if the API call fails, so a
-    generation hiccup never blocks document generation."""
-    if not property_address:
-        return property_address
-    target_language = "Malayalam" if language == "malayalam" else "English"
-    prompt = f'Target language: {target_language}\nProperty address: "{property_address}"'
-    try:
-        raw = _chat(PROPERTY_DESCRIPTION_SYSTEM_PROMPT, prompt, max_tokens=300)
-    except requests.exceptions.RequestException as e:
-        print(f"[Property description generation ERROR] Falling back to raw address: {e}")
-        return property_address
-    return raw.strip().strip('"')
+def build_property_description(fields: dict, language: str) -> str:
+    """Deterministically composes the formal property-description clause
+    (the vendor specimen's "മാർജിൻ" schedule text) from structured fields
+    the customer answers directly via the WhatsApp Flow -- district,
+    local_body_type, local_body_name, property_type, and the dynamic
+    flat_name/floor follow-up, plus an optional free-text property_address
+    used only as a door-number/extra-detail clause. No AI call: customers
+    now answer a direct structured question instead of typing a free-text
+    address for an AI to guess these same pieces out of, so there's
+    nothing left to extract.
+
+    Returns "" if district or local_body_name is missing -- docxtpl
+    renders a missing/blank {{ property_description }} cleanly (same as
+    the age-clause fields) rather than a broken half-sentence."""
+    district = (fields.get("district") or "").strip()
+    local_body_name = (fields.get("local_body_name") or "").strip()
+    if not district or not local_body_name:
+        return ""
+
+    local_body = _LOCAL_BODY_LABELS.get(fields.get("local_body_type"), {})
+    property_type = _PROPERTY_TYPE_LABELS.get(fields.get("property_type"), {})
+    flat_name = (fields.get("flat_name") or "").strip()
+    floor = (fields.get("floor") or "").strip()
+    door_detail = (fields.get("property_address") or "").strip()
+
+    if language == "malayalam":
+        body_locative = local_body.get("malayalam_locative", "")
+        property_label = property_type.get("malayalam", "വീട്")
+        if flat_name:
+            extra = f"{flat_name} എന്ന {property_label}"
+        elif floor:
+            extra = f"{floor} നിലയിലുള്ള {property_label}"
+        else:
+            extra = property_label
+        if door_detail:
+            clause = (
+                f"{district} ജില്ലയിൽ {local_body_name} {body_locative} സ്ഥിതി ചെയ്യുന്നതും "
+                f"{door_detail} എന്ന നമ്പറിട്ടതുമായ"
+            )
+        else:
+            clause = f"{district} ജില്ലയിൽ {local_body_name} {body_locative} സ്ഥിതി ചെയ്യുന്ന"
+        return f"{clause} {extra}.".replace("  ", " ")
+
+    body_label = local_body.get("english", "")
+    property_label = property_type.get("english", "House")
+    door_clause = f"bearing No. {door_detail}, " if door_detail else ""
+    if flat_name:
+        extra = f" ({property_label} No. {flat_name})"
+    elif floor:
+        extra = f" ({floor} floor)"
+    else:
+        extra = ""
+    locality = f"{local_body_name} {body_label}".strip()
+    return f"{property_label} {door_clause}situated in {locality}, {district} District{extra}.".replace("  ", " ")
