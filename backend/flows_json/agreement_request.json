@@ -23,52 +23,33 @@
             ]
           },
           {
-            "type": "If",
-            "condition": "${form.agreement_type} == 'rental_agreement'",
-            "then": [
-              {
-                "type": "Dropdown",
-                "name": "preferred_document_language",
-                "label": "Which language should the document be drafted in?",
-                "required": true,
-                "data-source": [
-                  { "id": "malayalam", "title": "Malayalam" },
-                  { "id": "english", "title": "English" }
-                ]
-              },
-              {
-                "type": "Footer",
-                "label": "Continue",
-                "on-click-action": {
-                  "name": "navigate",
-                  "next": { "type": "screen", "name": "rental_agreement" },
-                  "payload": {
-                    "agreement_type": "${form.agreement_type}",
-                    "preferred_document_language": "${form.preferred_document_language}"
-                  }
-                }
-              }
-            ],
-            "else": [
-              {
-                "type": "Footer",
-                "label": "Continue",
-                "on-click-action": {
-                  "name": "navigate",
-                  "next": { "type": "screen", "name": "shop_agreement" },
-                  "payload": {
-                    "agreement_type": "${form.agreement_type}"
-                  }
-                }
-              }
+            "type": "Dropdown",
+            "name": "preferred_document_language",
+            "label": "Document language (rental only)",
+            "required": false,
+            "data-source": [
+              { "id": "malayalam", "title": "Malayalam" },
+              { "id": "english", "title": "English" }
             ]
+          },
+          {
+            "type": "Footer",
+            "label": "Continue",
+            "on-click-action": {
+              "name": "navigate",
+              "next": { "type": "screen", "name": "DETAILS" },
+              "payload": {
+                "agreement_type": "${form.agreement_type}",
+                "preferred_document_language": "${form.preferred_document_language}"
+              }
+            }
           }
         ]
       }
     },
     {
-      "id": "rental_agreement",
-      "title": "Rental Agreement Details",
+      "id": "DETAILS",
+      "title": "Agreement Details",
       "terminal": true,
       "data": {
         "agreement_type": { "type": "string", "__example__": "rental_agreement" },
@@ -79,15 +60,22 @@
         "children": [
           {
             "type": "TextHeading",
-            "text": "Rental Agreement Details"
+            "text": "Agreement Details"
+          },
+          {
+            "type": "TextBody",
+            "text": "Only fill in the fields that apply to the agreement type you picked -- leave the rest blank."
           },
           { "type": "TextInput", "name": "landlord_name", "label": "Landlord's full name", "input-type": "text", "required": true },
-          { "type": "TextInput", "name": "landlord_address", "label": "Landlord's address", "input-type": "text", "required": true },
+          { "type": "TextInput", "name": "landlord_address", "label": "Landlord's address (rental only)", "input-type": "text", "required": false },
           { "type": "TextInput", "name": "tenant_name", "label": "Tenant's full name", "input-type": "text", "required": true },
-          { "type": "TextInput", "name": "tenant_address", "label": "Tenant's address", "input-type": "text", "required": true },
-          { "type": "TextInput", "name": "property_address", "label": "Rented property's address", "input-type": "text", "required": true },
+          { "type": "TextInput", "name": "tenant_address", "label": "Tenant's address (rental only)", "input-type": "text", "required": false },
+          { "type": "TextInput", "name": "property_address", "label": "Rented property's address (rental only)", "input-type": "text", "required": false },
+          { "type": "TextInput", "name": "shop_address", "label": "Shop address (shop only)", "input-type": "text", "required": false },
+          { "type": "TextInput", "name": "business_type", "label": "Type of business (shop only)", "input-type": "text", "required": false },
           { "type": "TextInput", "name": "monthly_rent", "label": "Monthly rent (INR)", "input-type": "number", "required": true },
           { "type": "TextInput", "name": "security_deposit", "label": "Security deposit (INR)", "input-type": "number", "required": true },
+          { "type": "TextInput", "name": "agreement_duration_months", "label": "Agreement duration in months (shop only)", "input-type": "number", "required": false },
           { "type": "DatePicker", "name": "start_date", "label": "Agreement start date", "required": true },
           {
             "type": "Footer",
@@ -102,46 +90,6 @@
                 "tenant_name": "${form.tenant_name}",
                 "tenant_address": "${form.tenant_address}",
                 "property_address": "${form.property_address}",
-                "monthly_rent": "${form.monthly_rent}",
-                "security_deposit": "${form.security_deposit}",
-                "start_date": "${form.start_date}"
-              }
-            }
-          }
-        ]
-      }
-    },
-    {
-      "id": "shop_agreement",
-      "title": "Shop Agreement Details",
-      "terminal": true,
-      "data": {
-        "agreement_type": { "type": "string", "__example__": "shop_agreement" }
-      },
-      "layout": {
-        "type": "SingleColumnLayout",
-        "children": [
-          {
-            "type": "TextHeading",
-            "text": "Shop Agreement Details"
-          },
-          { "type": "TextInput", "name": "landlord_name", "label": "Landlord's full name", "input-type": "text", "required": true },
-          { "type": "TextInput", "name": "tenant_name", "label": "Tenant's full name", "input-type": "text", "required": true },
-          { "type": "TextInput", "name": "shop_address", "label": "Shop address", "input-type": "text", "required": true },
-          { "type": "TextInput", "name": "business_type", "label": "Type of business", "input-type": "text", "required": true },
-          { "type": "TextInput", "name": "monthly_rent", "label": "Monthly rent (INR)", "input-type": "number", "required": true },
-          { "type": "TextInput", "name": "security_deposit", "label": "Security deposit (INR)", "input-type": "number", "required": true },
-          { "type": "TextInput", "name": "agreement_duration_months", "label": "Agreement duration (months)", "input-type": "number", "required": true },
-          { "type": "DatePicker", "name": "start_date", "label": "Agreement start date", "required": true },
-          {
-            "type": "Footer",
-            "label": "Submit",
-            "on-click-action": {
-              "name": "complete",
-              "payload": {
-                "agreement_type": "${data.agreement_type}",
-                "landlord_name": "${form.landlord_name}",
-                "tenant_name": "${form.tenant_name}",
                 "shop_address": "${form.shop_address}",
                 "business_type": "${form.business_type}",
                 "monthly_rent": "${form.monthly_rent}",
